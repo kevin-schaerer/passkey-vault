@@ -295,12 +295,13 @@ class BackgroundService {
       const prfKeyBase64 = this.arrayBufferToBase64URL(prfKeyBytes.buffer);
 
       const prfInput = options?.extensions?.prf;
+      const prfEnabled = prfInput != null ? true : undefined;
       const prfEvalInput = this.selectPrfEval(prfInput, credentialIdBase64);
       const prfResults = prfEvalInput
         ? await this.computePrfResults(prfKeyBytes.buffer, prfEvalInput)
         : null;
-      const extensionsData = prfResults ? this.encodePrfExtension(prfResults) : null;
-      const clientExtensionResults = this.buildClientExtensionResults(prfResults);
+      const extensionsData = this.encodePrfExtension(prfResults, prfEnabled);
+      const clientExtensionResults = this.buildClientExtensionResults(prfResults, prfEnabled);
 
       const clientData = { type: 'webauthn.create', challenge, origin };
       const clientDataJSONBytes = new TextEncoder().encode(JSON.stringify(clientData));
@@ -671,41 +672,71 @@ class BackgroundService {
     return crypto.subtle.sign('HMAC', key, data);
   }
 
-  private buildClientExtensionResults(prfResults: any | null): any {
+  private buildClientExtensionResults(prfResults: any | null, prfEnabled?: boolean): any {
     const baseResults: any = { credProps: { rk: true } };
-    if (!prfResults?.results) return baseResults;
+    if (prfEnabled === undefined && !prfResults?.results) return baseResults;
 
-    const encoded: any = { results: {} };
-    if (prfResults.results.first) {
-      encoded.results.first = this.arrayBufferToBase64URL(prfResults.results.first);
+    const prfObj: any = {};
+    if (prfEnabled !== undefined) {
+      prfObj.enabled = prfEnabled;
     }
-    if (prfResults.results.second) {
-      encoded.results.second = this.arrayBufferToBase64URL(prfResults.results.second);
+
+    if (prfResults?.results) {
+      const resultMap: any = {};
+      if (prfResults.results.first) {
+        resultMap.first = this.arrayBufferToBase64URL(prfResults.results.first);
+      }
+      if (prfResults.results.second) {
+        resultMap.second = this.arrayBufferToBase64URL(prfResults.results.second);
+      }
+      if (resultMap.first || resultMap.second) {
+        prfObj.results = resultMap;
+      }
     }
-    if (encoded.results.first || encoded.results.second) baseResults.prf = encoded;
+
+    if (Object.keys(prfObj).length > 0) baseResults.prf = prfObj;
     return baseResults;
   }
 
-  private encodePrfExtension(prfResults: any | null): Uint8Array | null {
-    if (!prfResults?.results) return null;
+  private encodePrfExtension(prfResults: any | null, prfEnabled?: boolean): Uint8Array | null {
+    if (prfEnabled === undefined && !prfResults?.results) return null;
 
-    const resultEntries: number[] = [];
-    let resultCount = 0;
+    const prfEntries: number[] = [];
+    let prfEntryCount = 0;
 
-    if (prfResults.results.first) {
-      resultEntries.push(...this.encodeTextString('first'));
-      resultEntries.push(...this.encodeByteString(new Uint8Array(prfResults.results.first)));
-      resultCount++;
+    // Add enabled field (registration only)
+    if (prfEnabled !== undefined) {
+      prfEntries.push(...this.encodeTextString('enabled'));
+      prfEntries.push(prfEnabled ? 0xf5 : 0xf4); // CBOR true / false
+      prfEntryCount++;
     }
-    if (prfResults.results.second) {
-      resultEntries.push(...this.encodeTextString('second'));
-      resultEntries.push(...this.encodeByteString(new Uint8Array(prfResults.results.second)));
-      resultCount++;
-    }
-    if (resultCount === 0) return null;
 
-    const resultsMap = [...this.encodeMapHeader(resultCount), ...resultEntries];
-    const prfMap = [...this.encodeMapHeader(1), ...this.encodeTextString('results'), ...resultsMap];
+    if (prfResults?.results) {
+      const resultEntries: number[] = [];
+      let resultCount = 0;
+
+      if (prfResults.results.first) {
+        resultEntries.push(...this.encodeTextString('first'));
+        resultEntries.push(...this.encodeByteString(new Uint8Array(prfResults.results.first)));
+        resultCount++;
+      }
+      if (prfResults.results.second) {
+        resultEntries.push(...this.encodeTextString('second'));
+        resultEntries.push(...this.encodeByteString(new Uint8Array(prfResults.results.second)));
+        resultCount++;
+      }
+
+      if (resultCount > 0) {
+        prfEntries.push(...this.encodeTextString('results'));
+        prfEntries.push(...this.encodeMapHeader(resultCount));
+        prfEntries.push(...resultEntries);
+        prfEntryCount++;
+      }
+    }
+
+    if (prfEntryCount === 0) return null;
+
+    const prfMap = [...this.encodeMapHeader(prfEntryCount), ...prfEntries];
     const extensions = [...this.encodeMapHeader(1), ...this.encodeTextString('prf'), ...prfMap];
     return new Uint8Array(extensions);
   }
