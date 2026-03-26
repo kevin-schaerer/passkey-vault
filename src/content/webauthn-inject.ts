@@ -149,7 +149,7 @@ import { normalizePrfClientExtensionResults } from '../crypto/prf';
             })),
             authenticatorSelection: publicKey.authenticatorSelection,
             attestation: publicKey.attestation,
-            extensions: publicKey.extensions,
+            extensions: serializeExtensions(publicKey.extensions),
           },
           origin: window.location.origin,
         };
@@ -205,7 +205,7 @@ import { normalizePrfClientExtensionResults } from '../crypto/prf';
                 transports: cred.transports,
               })),
               userVerification: publicKey.userVerification,
-              extensions: publicKey.extensions,
+              extensions: serializeExtensions(publicKey.extensions),
             },
             mediation: options.mediation,
             origin: window.location.origin,
@@ -252,7 +252,7 @@ import { normalizePrfClientExtensionResults } from '../crypto/prf';
   }
 
   /**
-   * Normalize clientExtensionResults received from the background (base64-encoded) back into
+   * Normalize clientExtensionResults received from the background (base64url-encoded) back into
    * the shape expected by the page (ArrayBuffers for PRF outputs, enabled flag preserved).
    */
   function normalizeClientExtensionResults(results: any): any {
@@ -282,6 +282,36 @@ import { normalizePrfClientExtensionResults } from '../crypto/prf';
     }
     // Unknown type, try to convert
     return String(value);
+  }
+
+  /**
+   * Recursively serialize all ArrayBuffer / TypedArray values inside an extensions
+   * object to base64url strings.
+   *
+   * chrome.runtime.sendMessage uses JSON serialization, which turns ArrayBuffer
+   * into {} (empty object) and loses the data entirely.  TypedArrays fare a bit
+   * better ({0:x,1:y,...}) but the background already expects base64url strings
+   * for PRF inputs.  Converting everything here keeps the message chain lossless.
+   */
+  function serializeExtensions(value: any): any {
+    if (value == null) return value;
+    if (value instanceof ArrayBuffer) return arrayBufferToBase64URL(value);
+    if (ArrayBuffer.isView(value)) {
+      // Extract only the bytes the view covers — value.buffer may be a larger
+      // backing buffer if the view has a non-zero byteOffset or a smaller byteLength.
+      return arrayBufferToBase64URL(
+        value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)
+      );
+    }
+    if (Array.isArray(value)) return value.map(serializeExtensions);
+    if (typeof value === 'object') {
+      const out: any = {};
+      for (const key of Object.keys(value)) {
+        out[key] = serializeExtensions(value[key]);
+      }
+      return out;
+    }
+    return value;
   }
 
   /**
