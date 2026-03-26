@@ -3,6 +3,7 @@ import {
   computePrfResults,
   buildPrfClientExtensionResult,
   encodePrfAuthDataExtension,
+  normalizePrfClientExtensionResults,
 } from '../src/crypto/prf';
 
 // ---------------------------------------------------------------------------
@@ -195,6 +196,93 @@ describe('PRF Extension (src/crypto/prf.ts)', () => {
       const encodedFirst = encodePrfAuthDataExtension(prfResultsFirst);
       // Two results → larger payload than one result
       expect(encodedBoth!.length).toBeGreaterThan(encodedFirst!.length);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // normalizePrfClientExtensionResults
+  // This function is the inverse of buildPrfClientExtensionResult and is used
+  // by the injected page script to convert the background's base64url-encoded
+  // output back into ArrayBuffers for WebAuthn callers.
+  // ---------------------------------------------------------------------------
+  describe('normalizePrfClientExtensionResults', () => {
+    it('returns null for null/undefined input', () => {
+      expect(normalizePrfClientExtensionResults(null)).toBeNull();
+      expect(normalizePrfClientExtensionResults(undefined)).toBeNull();
+    });
+
+    it('returns null for an empty object', () => {
+      expect(normalizePrfClientExtensionResults({})).toBeNull();
+    });
+
+    it('preserves enabled:true for registration without eval (no results)', () => {
+      const normalized = normalizePrfClientExtensionResults({ enabled: true });
+      expect(normalized).not.toBeNull();
+      expect(normalized!.enabled).toBe(true);
+      expect(normalized!.results).toBeUndefined();
+    });
+
+    it('preserves enabled:false', () => {
+      const normalized = normalizePrfClientExtensionResults({ enabled: false });
+      expect(normalized).not.toBeNull();
+      expect(normalized!.enabled).toBe(false);
+    });
+
+    it('decodes first result as ArrayBuffer (authentication)', async () => {
+      const key = randomKey();
+      const prfResults = await computePrfResults(key, { first: textBuf('f') });
+      const encoded = buildPrfClientExtensionResult(prfResults);
+      expect(encoded).not.toBeNull();
+
+      const normalized = normalizePrfClientExtensionResults(encoded!);
+      expect(normalized).not.toBeNull();
+      expect(normalized!.enabled).toBeUndefined();
+      expect(normalized!.results?.first).toBeInstanceOf(ArrayBuffer);
+      expect((normalized!.results?.first as ArrayBuffer).byteLength).toBe(32);
+    });
+
+    it('decodes both first and second results as ArrayBuffers', async () => {
+      const key = randomKey();
+      const prfResults = await computePrfResults(key, {
+        first: textBuf('f'),
+        second: textBuf('s'),
+      });
+      const encoded = buildPrfClientExtensionResult(prfResults, true);
+      expect(encoded).not.toBeNull();
+
+      const normalized = normalizePrfClientExtensionResults(encoded!);
+      expect(normalized).not.toBeNull();
+      expect(normalized!.enabled).toBe(true);
+      expect(normalized!.results?.first).toBeInstanceOf(ArrayBuffer);
+      expect(normalized!.results?.second).toBeInstanceOf(ArrayBuffer);
+    });
+
+    it('preserves enabled:true alongside decoded results (registration with eval)', async () => {
+      const key = randomKey();
+      const prfResults = await computePrfResults(key, { first: textBuf('f') });
+      const encoded = buildPrfClientExtensionResult(prfResults, true);
+      expect(encoded).not.toBeNull();
+      // Verify the encoded form has both fields so normalization has something to preserve.
+      expect(encoded!.enabled).toBe(true);
+      expect(typeof encoded!.results?.first).toBe('string');
+
+      const normalized = normalizePrfClientExtensionResults(encoded!);
+      expect(normalized).not.toBeNull();
+      // The enabled flag must survive normalization (this was the bug).
+      expect(normalized!.enabled).toBe(true);
+      expect(normalized!.results?.first).toBeInstanceOf(ArrayBuffer);
+    });
+
+    it('round-trips: normalized first output matches original HMAC output', async () => {
+      const key = randomKey();
+      const input = textBuf('round-trip');
+      const prfResults = await computePrfResults(key, { first: input });
+      const encoded = buildPrfClientExtensionResult(prfResults, true);
+
+      const normalized = normalizePrfClientExtensionResults(encoded!);
+      expect(new Uint8Array(normalized!.results!.first!)).toEqual(
+        new Uint8Array(prfResults!.results.first!)
+      );
     });
   });
 });

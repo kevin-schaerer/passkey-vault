@@ -5,6 +5,8 @@
  * to completely manage passkeys without showing the browser's UI.
  */
 
+import { normalizePrfClientExtensionResults } from '../crypto/prf';
+
 (function () {
   'use strict';
 
@@ -250,26 +252,15 @@
   }
 
   /**
-   * Serialize a BufferSource (ArrayBuffer, TypedArray, DataView) to base64url string
+   * Normalize clientExtensionResults received from the background (base64-encoded) back into
+   * the shape expected by the page (ArrayBuffers for PRF outputs, enabled flag preserved).
    */
   function normalizeClientExtensionResults(results: any): any {
     const base: any = { credProps: { rk: true } };
-    if (!results?.prf?.results) {
-      return base;
+    const prfNormalized = normalizePrfClientExtensionResults(results?.prf);
+    if (prfNormalized) {
+      base.prf = prfNormalized;
     }
-
-    const prfResults: any = {};
-    if (results.prf.results.first) {
-      prfResults.first = base64ToArrayBuffer(results.prf.results.first);
-    }
-    if (results.prf.results.second) {
-      prfResults.second = base64ToArrayBuffer(results.prf.results.second);
-    }
-
-    if (prfResults.first || prfResults.second) {
-      base.prf = { results: prfResults };
-    }
-
     return base;
   }
 

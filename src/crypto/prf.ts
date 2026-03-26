@@ -161,6 +161,61 @@ export function encodePrfAuthDataExtension(
   return new Uint8Array(extensions);
 }
 
+/**
+ * Decoded (page-ready) PRF client extension result.
+ *
+ * Mirrors PrfClientExtensionResult but with ArrayBuffers instead of base64url
+ * strings, which is the format that WebAuthn callers expect.
+ */
+export interface DecodedPrfClientExtensionResult {
+  /** Present in registration responses to indicate PRF is supported. */
+  enabled?: boolean;
+  results?: {
+    first?: ArrayBuffer;
+    second?: ArrayBuffer;
+  };
+}
+
+/**
+ * Normalize a prf clientExtensionResult produced by the background service worker
+ * (where output bytes are base64url strings) into the format that page scripts
+ * expect (ArrayBuffers).
+ *
+ * The `enabled` flag is always preserved so that sites can detect PRF support
+ * from the registration response.
+ *
+ * Returns null when the input contains no PRF information.
+ */
+export function normalizePrfClientExtensionResults(
+  prf: PrfClientExtensionResult | null | undefined
+): DecodedPrfClientExtensionResult | null {
+  if (!prf) return null;
+
+  const normalized: DecodedPrfClientExtensionResult = {};
+
+  // Preserve enabled flag (present in registration responses).
+  if (prf.enabled !== undefined) {
+    normalized.enabled = prf.enabled;
+  }
+
+  // Convert output bytes from base64url strings back to ArrayBuffers.
+  if (prf.results) {
+    const results: { first?: ArrayBuffer; second?: ArrayBuffer } = {};
+    if (prf.results.first) {
+      results.first = base64urlToArrayBuffer(prf.results.first);
+    }
+    if (prf.results.second) {
+      results.second = base64urlToArrayBuffer(prf.results.second);
+    }
+    if (results.first || results.second) {
+      normalized.results = results;
+    }
+  }
+
+  if (Object.keys(normalized).length === 0) return null;
+  return normalized;
+}
+
 // ---------------------------------------------------------------------------
 // CBOR helpers
 // ---------------------------------------------------------------------------
@@ -195,4 +250,20 @@ function arrayBufferToBase64URL(buffer: ArrayBuffer): string {
     binary += String.fromCharCode(bytes[i] & 0xff);
   }
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function base64urlToArrayBuffer(base64url: string): ArrayBuffer {
+  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+  let binary: string;
+  try {
+    binary = atob(padded);
+  } catch {
+    throw new TypeError(`Invalid base64url string: "${base64url}"`);
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i) & 0xff;
+  }
+  return bytes.buffer;
 }
