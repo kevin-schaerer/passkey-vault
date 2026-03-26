@@ -5,6 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Import Passkeys - PassKey Vault</title>
     <style>
+      :root {
+        --bg-base: #050d1b;
+        --bg-surface: #0c1829;
+        --bg-elevated: #111f38;
+        --bg-hover: #162840;
+        --border-subtle: #1e3a5f;
+        --primary: #3b82f6;
+        --primary-hover: #2563eb;
+        --primary-glow: rgba(59, 130, 246, 0.18);
+        --text-primary: #e2e8f0;
+        --text-secondary: #94a3b8;
+        --text-muted: #64748b;
+        --success: #10b981;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+        --radius-sm: 4px;
+        --radius-md: 8px;
+        --radius-lg: 12px;
+      }
+
       * {
         box-sizing: border-box;
         margin: 0;
@@ -12,10 +32,10 @@
       }
 
       body {
-        font-family: 'Courier New', Courier, monospace;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
         font-size: 14px;
-        color: #000000;
-        background: #ffffff;
+        color: var(--text-primary);
+        background: var(--bg-base);
         min-height: 100vh;
         display: flex;
         align-items: center;
@@ -24,54 +44,56 @@
       }
 
       .container {
-        background: #ffffff;
-        border-radius: 0;
-        border: 3px solid #000000;
+        background: var(--bg-surface);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-subtle);
         max-width: 500px;
         width: 100%;
         overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
       }
 
       header {
-        background: #000000;
-        color: #fcd34d;
+        background: linear-gradient(135deg, #0c1829 0%, #0f2040 100%);
+        color: var(--text-primary);
         padding: 24px;
         text-align: center;
-        border-bottom: 3px solid #fcd34d;
+        border-bottom: 1px solid var(--border-subtle);
       }
 
       header h1 {
-        font-size: 24px;
+        font-size: 22px;
         font-weight: 700;
         margin-bottom: 8px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 0.3px;
       }
 
       header p {
-        opacity: 0.9;
+        opacity: 0.75;
         font-size: 14px;
+        color: var(--text-secondary);
       }
 
       main {
         padding: 24px;
-        background: #ffffff;
+        background: var(--bg-surface);
       }
 
       .drop-zone {
-        border: 3px dashed #000000;
-        border-radius: 0;
+        border: 2px dashed var(--border-subtle);
+        border-radius: var(--radius-lg);
         padding: 40px 20px;
         text-align: center;
         cursor: pointer;
-        transition: all 0.1s;
-        background: #f5f5f5;
+        transition: all 0.2s;
+        background: var(--bg-elevated);
       }
 
       .drop-zone:hover,
       .drop-zone.drag-over {
-        border-style: solid;
-        background: #fcd34d;
+        border-color: var(--primary);
+        background: var(--bg-hover);
+        box-shadow: 0 0 0 3px var(--primary-glow);
       }
 
       .drop-zone-icon {
@@ -81,14 +103,13 @@
 
       .drop-zone h3 {
         font-size: 16px;
-        font-weight: 700;
+        font-weight: 600;
         margin-bottom: 8px;
-        color: #000000;
-        text-transform: uppercase;
+        color: var(--text-primary);
       }
 
       .drop-zone p {
-        color: #333333;
+        color: var(--text-secondary);
         font-size: 13px;
         margin-bottom: 16px;
       }
@@ -98,65 +119,68 @@
       }
 
       .btn {
-        padding: 10px 20px;
-        border: 3px solid #000000;
-        border-radius: 0;
-        font-size: 14px;
-        font-weight: 700;
+        padding: 9px 20px;
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        font-size: 13px;
+        font-weight: 600;
         cursor: pointer;
-        transition: all 0.1s;
-        text-transform: uppercase;
-        font-family: 'Courier New', Courier, monospace;
+        transition: all 0.15s;
+        font-family: inherit;
+        background: var(--bg-elevated);
+        color: var(--text-primary);
       }
 
       .btn-primary {
-        background: #fcd34d;
-        color: #000000;
-        border-color: #000000;
+        background: var(--primary);
+        color: #ffffff;
+        border-color: var(--primary);
       }
 
       .btn-primary:hover {
-        background: #000000;
-        color: #fcd34d;
+        background: var(--primary-hover);
+        border-color: var(--primary-hover);
       }
 
       .btn-secondary {
-        background: #ffffff;
-        color: #000000;
-        border-color: #000000;
+        background: var(--bg-elevated);
+        color: var(--text-primary);
+        border-color: var(--border-subtle);
       }
 
       .btn-secondary:hover {
-        background: #f5f5f5;
+        background: var(--bg-hover);
+        border-color: var(--primary);
+        color: var(--primary);
       }
 
       .status {
         margin-top: 20px;
-        padding: 16px;
-        border-radius: 0;
-        border: 3px solid #000000;
+        padding: 14px 16px;
+        border-radius: var(--radius-md);
         display: none;
-        font-weight: 700;
+        font-weight: 600;
+        font-size: 13px;
       }
 
       .status.success {
-        background: #000000;
-        color: #10b981;
-        border-color: #10b981;
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.3);
         display: block;
       }
 
       .status.error {
-        background: #000000;
-        color: #ef4444;
-        border-color: #ef4444;
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--danger);
+        border: 1px solid rgba(239, 68, 68, 0.3);
         display: block;
       }
 
       .status.info {
-        background: #000000;
-        color: #fcd34d;
-        border-color: #fcd34d;
+        background: rgba(59, 130, 246, 0.1);
+        color: #60a5fa;
+        border: 1px solid rgba(59, 130, 246, 0.3);
         display: block;
       }
 
@@ -170,27 +194,29 @@
       }
 
       .preview h4 {
-        font-size: 14px;
-        font-weight: 700;
+        font-size: 12px;
+        font-weight: 600;
         margin-bottom: 12px;
-        color: #000000;
+        color: var(--text-secondary);
         text-transform: uppercase;
+        letter-spacing: 0.5px;
       }
 
       .preview-list {
         max-height: 200px;
         overflow-y: auto;
-        border: 3px solid #000000;
-        border-radius: 0;
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-md);
+        background: var(--bg-elevated);
       }
 
       .preview-item {
-        padding: 12px 16px;
-        border-bottom: 2px solid #000000;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border-subtle);
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: #ffffff;
+        transition: background 0.15s;
       }
 
       .preview-item:last-child {
@@ -198,38 +224,38 @@
       }
 
       .preview-item:hover {
-        background: #f5f5f5;
+        background: var(--bg-hover);
       }
 
       .preview-item-site {
-        font-weight: 700;
-        text-transform: uppercase;
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--text-primary);
       }
 
       .preview-item-user {
-        font-size: 12px;
-        color: #333333;
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-top: 2px;
       }
 
       .preview-item-status {
-        font-size: 12px;
-        font-weight: 700;
-        padding: 2px 8px;
-        border-radius: 0;
-        border: 2px solid #000000;
-        text-transform: uppercase;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 3px 8px;
+        border-radius: 20px;
       }
 
       .preview-item-status.new {
-        background: #000000;
-        color: #10b981;
-        border-color: #10b981;
+        background: rgba(16, 185, 129, 0.12);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.3);
       }
 
       .preview-item-status.duplicate {
-        background: #000000;
-        color: #fcd34d;
-        border-color: #fcd34d;
+        background: rgba(245, 158, 11, 0.12);
+        color: var(--warning);
+        border: 1px solid rgba(245, 158, 11, 0.3);
       }
 
       .actions {
@@ -244,22 +270,22 @@
       }
 
       footer {
-        padding: 16px 24px;
-        background: #000000;
-        border-top: 3px solid #fcd34d;
+        padding: 14px 24px;
+        background: var(--bg-elevated);
+        border-top: 1px solid var(--border-subtle);
         text-align: center;
       }
 
       footer a {
-        color: #fcd34d;
+        color: var(--text-muted);
         text-decoration: none;
         font-size: 13px;
-        font-weight: 700;
-        text-transform: uppercase;
+        font-weight: 500;
+        transition: color 0.15s;
       }
 
       footer a:hover {
-        text-decoration: underline;
+        color: var(--primary);
       }
     </style>
   </head>
@@ -272,7 +298,7 @@
 
       <main>
         <div class="drop-zone" id="drop-zone">
-          <div class="drop-zone-icon">[ ]</div>
+          <div class="drop-zone-icon" role="img" aria-label="Upload file">📂</div>
           <h3>Drop your backup file here</h3>
           <p>or click to browse</p>
           <input type="file" id="file-input" accept=".json,application/json" />

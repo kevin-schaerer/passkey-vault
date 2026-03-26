@@ -5,25 +5,51 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Emergency Access</title>
   <style>
-    body {
+    :root {
+      --bg-base: #050d1b;
+      --bg-surface: #0c1829;
+      --bg-elevated: #111f38;
+      --bg-hover: #162840;
+      --border-subtle: #1e3a5f;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --primary-glow: rgba(59, 130, 246, 0.18);
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #1a1a1a;
-      color: #ffffff;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
       height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
+      padding: 20px;
     }
 
     .container {
-      background: #2a2a2a;
-      border-radius: 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
       padding: 2rem;
       width: 90%;
-      max-width: 400px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      max-width: 420px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
     }
 
     .logo {
@@ -33,8 +59,10 @@
 
     .logo h1 {
       margin: 0;
-      font-size: 1.5rem;
-      color: #4a9eff;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: 0.3px;
     }
 
     .form-group {
@@ -45,56 +73,73 @@
       display: block;
       margin-bottom: 0.5rem;
       font-weight: 500;
+      font-size: 13px;
+      color: var(--text-secondary);
     }
 
-    input[type="password"] {
+    input[type="password"],
+    input[type="number"] {
       width: 100%;
-      padding: 0.75rem;
-      border: 1px solid #444;
-      border-radius: 4px;
-      background: #1a1a1a;
-      color: #ffffff;
-      font-size: 1rem;
-      box-sizing: border-box;
+      padding: 0.7rem 0.85rem;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      font-size: 0.95rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
 
-    input[type="password"]:focus {
-      outline: none;
-      border-color: #4a9eff;
+    input[type="password"]:focus,
+    input[type="number"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+
+    input[type="checkbox"] {
+      accent-color: var(--primary);
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
     }
 
     .button {
       width: 100%;
-      padding: 0.75rem;
-      border: none;
-      border-radius: 4px;
-      background: #4a9eff;
+      padding: 0.7rem;
+      border: 1px solid var(--primary);
+      border-radius: var(--radius-md);
+      background: var(--primary);
       color: #ffffff;
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 600;
       cursor: pointer;
-      transition: background-color 0.2s;
+      transition: background-color 0.15s, border-color 0.15s;
+      font-family: inherit;
     }
 
     .button:hover {
-      background: #357abd;
+      background: var(--primary-hover);
+      border-color: var(--primary-hover);
     }
 
     .button:disabled {
-      background: #666;
+      background: var(--bg-elevated);
+      border-color: var(--border-subtle);
+      color: var(--text-muted);
       cursor: not-allowed;
     }
 
     .error {
-      color: #ff6b6b;
+      color: var(--danger);
       margin-top: 0.5rem;
-      font-size: 0.875rem;
+      font-size: 0.85rem;
     }
 
     .success {
-      color: #51cf66;
+      color: var(--success);
       margin-top: 0.5rem;
-      font-size: 0.875rem;
+      font-size: 0.85rem;
     }
 
     .hidden {
@@ -104,24 +149,38 @@
     .tabs {
       display: flex;
       margin-bottom: 1rem;
-      border-bottom: 1px solid #444;
+      background: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 3px;
+      gap: 3px;
     }
 
     .tab {
       flex: 1;
-      padding: 0.75rem;
-      background: none;
+      padding: 0.55rem;
+      background: transparent;
       border: none;
-      color: #888;
+      color: var(--text-muted);
       cursor: pointer;
-      font-size: 0.875rem;
+      font-size: 0.8rem;
+      font-weight: 600;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-radius: 6px;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+
+    .tab:hover {
+      color: var(--text-primary);
+      background: var(--bg-elevated);
     }
 
     .tab.active {
-      color: #4a9eff;
-      border-bottom: 2px solid #4a9eff;
-      margin-bottom: -1px;
+      background: var(--primary);
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
     }
 
     .tab-content {
@@ -140,36 +199,47 @@
       display: block;
       width: 100%;
       padding: 0.75rem;
-      border: 2px dashed #444;
-      border-radius: 4px;
+      border: 2px dashed var(--border-subtle);
+      border-radius: var(--radius-md);
       text-align: center;
       cursor: pointer;
-      transition: border-color 0.2s;
+      color: var(--text-secondary);
+      font-size: 13px;
+      transition: border-color 0.2s, background 0.15s;
     }
 
     .file-label:hover {
-      border-color: #4a9eff;
+      border-color: var(--primary);
+      background: var(--bg-hover);
+      color: var(--primary);
     }
 
     .passkey-list {
       max-height: 200px;
       overflow-y: auto;
-      border: 1px solid #444;
-      border-radius: 4px;
-      padding: 0.5rem;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 0.25rem;
       margin: 1rem 0;
+      background: var(--bg-elevated);
     }
 
     .passkey-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0.5rem;
-      border-bottom: 1px solid #333;
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      transition: background 0.15s;
     }
 
     .passkey-item:last-child {
       border-bottom: none;
+    }
+
+    .passkey-item:hover {
+      background: var(--bg-hover);
     }
 
     .passkey-info {
@@ -178,21 +248,33 @@
 
     .passkey-name {
       font-weight: 600;
+      font-size: 13px;
+      color: var(--text-primary);
     }
 
     .passkey-rp {
-      font-size: 0.875rem;
-      color: #888;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 2px;
     }
 
     .delete-button {
-      background: #ff6b6b;
-      color: #ffffff;
-      border: none;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--radius-sm);
       cursor: pointer;
       font-size: 0.75rem;
+      font-weight: 600;
+      transition: background 0.15s, border-color 0.15s;
+      font-family: inherit;
+    }
+
+    .delete-button:hover {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #ffffff;
     }
   </style>
 </head>
