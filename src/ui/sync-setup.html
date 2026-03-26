@@ -3,65 +3,52 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sync Setup - PassKey Vault</title>
+    <title>Sync Setup – PassKey Vault</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <div class="container sync-setup">
       <header>
-        <h1>Sync Setup</h1>
+        <h1>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:8px;color:var(--accent)">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+          </svg>
+          Sync Setup
+        </h1>
       </header>
 
       <div class="mode-selector">
         <button id="create-mode-btn" class="mode-btn active">
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
             <line x1="12" y1="8" x2="12" y2="16"></line>
             <line x1="8" y1="12" x2="16" y2="12"></line>
           </svg>
-          Create New Sync Chain
+          Create New Chain
         </button>
         <button id="join-mode-btn" class="mode-btn">
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M17 21v-2a4 4 0 0 0 0-4H5a4 4 0 0 0 0-4v2"></path>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
             <circle cx="9" cy="7" r="4"></circle>
-            <path d="M23 21v-2a2 2 0 0 0 0-2h-3a2 2 0 0 0 0-2v2"></path>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
           </svg>
           Join Existing Chain
         </button>
       </div>
 
+      <!-- Create panel -->
       <div id="create-chain-panel" class="panel active">
         <h2>Create a New Sync Chain</h2>
         <p class="panel-description">
-          Create a secure sync chain to share your passkeys across multiple devices. You'll receive
-          a recovery phrase (seed words) that you'll need to add new devices.
+          Create a secure sync chain to share your passkeys across devices. You'll receive
+          a recovery phrase you'll need to add new devices.
         </p>
 
         <div class="form-group">
           <label for="device-name-create">Device Name</label>
-          <input
-            type="text"
-            id="device-name-create"
-            class="form-input"
-            placeholder="e.g., My Laptop"
-            required
-          />
-          <p class="help-text">This name will help you identify this device in your sync chain.</p>
+          <input type="text" id="device-name-create" class="form-input" placeholder="e.g., My Laptop" required />
+          <p class="help-text">This name identifies this device in your sync chain.</p>
         </div>
 
         <div class="form-group">
@@ -77,78 +64,57 @@
             </label>
           </div>
           <p class="help-text">
-            12 words: 128-bit security (recommended for most users)<br />
-            24 words: 256-bit security (maximum security)
+            12 words: 128-bit security (recommended) &nbsp;·&nbsp; 24 words: 256-bit (maximum)
           </p>
         </div>
 
         <button id="create-chain-btn" class="btn btn-primary btn-full">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <polyline points="19 12 12 5 5 12"></polyline>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12l7 7 7-7"></path>
           </svg>
           Create Sync Chain
         </button>
 
         <div id="create-success" class="success-message" style="display: none">
-          <div class="success-icon">✓</div>
+          <div class="success-icon">✅</div>
           <h3>Sync Chain Created!</h3>
-          <p>Save your recovery phrase securely. You'll need it to add new devices.</p>
+          <p>Save your recovery phrase somewhere safe. You'll need it to add new devices.</p>
 
           <div class="mnemonic-display">
             <div id="mnemonic-words" class="mnemonic-words"></div>
-            <button id="copy-mnemonic-btn" class="btn btn-secondary btn-sm">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
+            <button id="copy-mnemonic-btn" class="btn btn-secondary btn-sm" style="margin-top:8px">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h1"></path>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
               </svg>
-              Copy
+              Copy Phrase
             </button>
           </div>
 
-          <div id="qr-code" class="qr-code"></div>
+          <div id="qr-code" class="qr-code" style="margin-top:12px"></div>
 
           <div class="warning-box">
-            <strong>Important:</strong> Never share your recovery phrase with anyone. Anyone with
-            access to it can sync your passkeys.
+            <strong>⚠ Keep this phrase secret</strong>
+            Never share your recovery phrase with anyone. Anyone with it can access your passkeys.
           </div>
 
-          <button id="finish-create-btn" class="btn btn-primary btn-full">
+          <button id="finish-create-btn" class="btn btn-primary btn-full" style="margin-top:14px">
             I've Saved My Phrase
           </button>
         </div>
       </div>
 
+      <!-- Join panel -->
       <div id="join-chain-panel" class="panel">
         <h2>Join Existing Sync Chain</h2>
         <p class="panel-description">
-          Enter the recovery phrase from another device to join its sync chain. Your passkeys will
-          be encrypted and synced securely.
+          Enter the recovery phrase from another device to join its sync chain.
+          Your passkeys will be encrypted and synced securely.
         </p>
 
         <div class="form-group">
           <label for="device-name-join">Device Name</label>
-          <input
-            type="text"
-            id="device-name-join"
-            class="form-input"
-            placeholder="e.g., My Phone"
-            required
-          />
+          <input type="text" id="device-name-join" class="form-input" placeholder="e.g., My Phone" required />
         </div>
 
         <div class="form-group">
@@ -156,28 +122,24 @@
           <textarea
             id="mnemonic-input"
             class="form-textarea"
-            placeholder="Enter your 12 or 24 recovery words separated by spaces"
+            placeholder="Enter your 12 or 24 recovery words, separated by spaces"
             rows="3"
             required
           ></textarea>
-          <p class="help-text">
-            Enter the exact words from the creating device, in the same order.
-          </p>
+          <p class="help-text">Enter the words from the originating device, in the same order.</p>
         </div>
 
         <div class="scan-option">
-          <p>Or scan a QR code:</p>
+          <p>Or scan a QR code instead:</p>
           <button id="scan-qr-btn" class="btn btn-secondary">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M3 3h18v18H3V3z"></path>
-              <path d="M8.5 13.5l2.5 3 2.5-3-2.5-3 2.5-3z"></path>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+              <path d="M14 14h3v3h-3z"></path>
+              <path d="M17 17h3v3h-3z"></path>
+              <path d="M14 20h3"></path>
+              <path d="M20 14v3"></path>
             </svg>
             Scan QR Code
           </button>
@@ -185,28 +147,22 @@
 
         <div id="join-loading" class="loading" style="display: none">
           <div class="spinner"></div>
-          <p>Verifying recovery phrase...</p>
+          <p>Verifying recovery phrase…</p>
         </div>
 
-        <button id="join-chain-btn" class="btn btn-primary btn-full">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
+        <button id="join-chain-btn" class="btn btn-primary btn-full" style="margin-top:8px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-            <polyline points="10 17 15 21 15 21 7 21"></polyline>
+            <polyline points="10 17 15 12 10 7"></polyline>
+            <line x1="15" y1="12" x2="3" y2="12"></line>
           </svg>
           Join Sync Chain
         </button>
 
         <div id="join-success" class="success-message" style="display: none">
-          <div class="success-icon">✓</div>
+          <div class="success-icon">✅</div>
           <h3>Successfully Joined!</h3>
-          <p>Your passkeys are being synced. Close this window to continue.</p>
+          <p>Your passkeys are being synced. You can close this window.</p>
         </div>
       </div>
     </div>

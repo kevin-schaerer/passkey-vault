@@ -3,56 +3,57 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sync Settings - PassKey Vault</title>
+    <title>Sync Settings – PassKey Vault</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <div class="container sync-settings">
       <header>
-        <h1>Sync Settings</h1>
+        <h1>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:8px;color:var(--accent)">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+          </svg>
+          Sync Settings
+        </h1>
       </header>
 
+      <!-- Not synced -->
       <div id="not-synced" class="panel">
         <div class="empty-state">
           <div class="empty-icon">🔗</div>
           <h2>Sync Not Set Up</h2>
-          <p>Set up sync to securely share your passkeys across devices.</p>
-          <button id="setup-sync-btn" class="btn btn-primary">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <polyline points="19 12 12 5 5 12"></polyline>
+          <p>Set up sync to securely share your passkeys across all your devices.</p>
+          <button id="setup-sync-btn" class="btn btn-primary" style="margin-top:4px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="16"></line>
+              <line x1="8" y1="12" x2="16" y2="12"></line>
             </svg>
             Set Up Sync
           </button>
         </div>
       </div>
 
+      <!-- Synced panel -->
       <div id="synced-panel" class="panel" style="display: none">
         <div class="sync-status">
-          <div class="status-badge active">Sync Active</div>
+          <div class="status-badge active">● Sync Active</div>
           <div class="chain-info">
-            <span>Chain ID: <code id="chain-id"></code></span>
+            Chain: <code id="chain-id"></code>
           </div>
         </div>
 
-        <!-- Tab Navigation -->
+        <!-- Tab nav -->
         <div class="tab-nav">
           <button class="tab-btn active" data-tab="status">Status</button>
           <button class="tab-btn" data-tab="devices">Devices</button>
           <button class="tab-btn" data-tab="debug">Debug</button>
         </div>
 
-        <!-- Status Tab -->
+        <!-- Status tab -->
         <div id="tab-status" class="tab-content active">
           <section class="sync-overview">
-            <h2>Sync Status</h2>
+            <h2>Overview</h2>
             <div class="status-grid">
               <div class="status-item">
                 <div class="status-label">Connection</div>
@@ -75,28 +76,31 @@
                 <div id="last-sync" class="status-value">--</div>
               </div>
             </div>
+
             <div id="sync-error" class="error-box" style="display: none"></div>
-            <button id="manual-sync-btn" class="btn btn-secondary btn-sm">Sync Now</button>
+
+            <button id="manual-sync-btn" class="btn btn-secondary btn-sm">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6"></path>
+                <path d="M1 20v-6h6"></path>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              Sync Now
+            </button>
           </section>
         </div>
 
-        <!-- Devices Tab -->
+        <!-- Devices tab -->
         <div id="tab-devices" class="tab-content">
           <section>
-            <h2>Devices in Sync Chain</h2>
+            <h2 style="margin-bottom:12px">Devices in Chain</h2>
             <div id="devices-list" class="devices-list"></div>
 
             <button id="add-device-btn" class="btn btn-secondary btn-sm">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <polyline points="19 12 12 5 5 12"></polyline>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="16"></line>
+                <line x1="8" y1="12" x2="16" y2="12"></line>
               </svg>
               Add Another Device
             </button>
@@ -105,20 +109,21 @@
           <section class="danger-zone">
             <h2>Danger Zone</h2>
             <div class="warning-box">
-              <strong>Leaving this sync chain</strong> will remove this device from the chain. Make
-              sure you have access to at least one other device before leaving.
+              <strong>⚠ Leaving this sync chain</strong>
+              This will remove this device from the chain. Make sure you have access to another device first.
             </div>
-
-            <button id="leave-chain-btn" class="btn btn-danger btn-full">Leave Sync Chain</button>
+            <button id="leave-chain-btn" class="btn btn-danger btn-full" style="margin-top:12px">
+              Leave Sync Chain
+            </button>
           </section>
         </div>
 
-        <!-- Debug Tab -->
+        <!-- Debug tab -->
         <div id="tab-debug" class="tab-content">
           <section>
-            <h2>Connection Debug Info</h2>
+            <h2 style="margin-bottom:10px">Connection Debug</h2>
             <div id="debug-info" class="debug-panel">
-              <pre>Loading...</pre>
+              <pre>Loading…</pre>
             </div>
 
             <div class="debug-actions">
@@ -126,16 +131,22 @@
               <button id="clear-logs-btn" class="btn btn-secondary btn-sm">Clear Logs</button>
             </div>
 
-            <h2>Sync Logs</h2>
+            <h2 style="margin-bottom:10px">Sync Logs</h2>
             <div id="debug-logs" class="debug-logs">
-              <pre>Loading...</pre>
+              <pre>Loading…</pre>
             </div>
           </section>
         </div>
       </div>
 
       <footer>
-        <button id="back-btn" class="btn btn-secondary">← Back to Passkeys</button>
+        <button id="back-btn" class="btn btn-secondary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5"></path>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          Back to Passkeys
+        </button>
       </footer>
     </div>
 
