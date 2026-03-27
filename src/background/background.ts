@@ -103,7 +103,7 @@ class BackgroundService {
 
   private async initializeSyncService(): Promise<void> {
     try {
-      const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
+      const configResult = await this.storageGet(SYNC_CONFIG_KEY);
       const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
 
       if (config?.enabled && config.chainId && config.deviceId && config.seedHash) {
@@ -288,6 +288,22 @@ class BackgroundService {
   private storageSet(data: Record<string, any>): Promise<void> {
     return new Promise((resolve, reject) => {
       chrome.storage.local.set(data, () => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * Reliable wrapper around chrome.storage.local.remove using the callback-based
+   * API for the same reasons as storageGet above.
+   */
+  private storageRemove(keys: string | string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.remove(keys, () => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
         } else {
@@ -1240,7 +1256,7 @@ class BackgroundService {
       // SECURITY FIX: Store config with sync salt
       // NOTE: In production, seedHash should be encrypted with master password
       // using secureStorage.storeSyncConfig() after user sets up master password
-      await chrome.storage.local.set({
+      await this.storageSet({
         [SYNC_CONFIG_KEY]: {
           enabled: true,
           chainId,
@@ -1316,7 +1332,7 @@ class BackgroundService {
         relayUrls: relayUrls && relayUrls.length > 0 ? relayUrls : null,
       };
 
-      await chrome.storage.local.set({
+      await this.storageSet({
         [SYNC_CONFIG_KEY]: config,
         [SYNC_DEVICES_KEY]: chain,
       });
@@ -1338,7 +1354,7 @@ class BackgroundService {
       await syncService.disconnect();
 
       // SECURITY FIX: Include syncSalt: null when clearing config
-      await chrome.storage.local.set({
+      await this.storageSet({
         [SYNC_CONFIG_KEY]: {
           enabled: false,
           chainId: null,
@@ -1361,9 +1377,9 @@ class BackgroundService {
 
   private async getSyncChainInfo(): Promise<any> {
     try {
-      const chainResult = await chrome.storage.local.get(SYNC_DEVICES_KEY);
+      const chainResult = await this.storageGet(SYNC_DEVICES_KEY);
       const chain: SyncChain = chainResult?.[SYNC_DEVICES_KEY];
-      const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
+      const configResult = await this.storageGet(SYNC_CONFIG_KEY);
       const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
 
       if (!chain || !config || !config.enabled) {
@@ -1388,7 +1404,7 @@ class BackgroundService {
 
   private async removeSyncDevice(deviceId: string): Promise<any> {
     try {
-      const result = await chrome.storage.local.get(SYNC_DEVICES_KEY);
+      const result = await this.storageGet(SYNC_DEVICES_KEY);
       const chain: SyncChain = result?.[SYNC_DEVICES_KEY];
 
       if (!chain) return { success: false, error: 'Sync chain not found' };
@@ -1396,7 +1412,7 @@ class BackgroundService {
       const updatedDevices = chain.devices.filter((d) => d.id !== deviceId);
       const updatedChain: SyncChain = { ...chain, devices: updatedDevices };
 
-      await chrome.storage.local.set({ [SYNC_DEVICES_KEY]: updatedChain });
+      await this.storageSet({ [SYNC_DEVICES_KEY]: updatedChain });
       return { success: true };
     } catch (error: any) {
       console.error('Failed to remove sync device:', error);
@@ -1417,13 +1433,13 @@ class BackgroundService {
 
   private async getSyncStatus(): Promise<any> {
     try {
-      const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
+      const configResult = await this.storageGet(SYNC_CONFIG_KEY);
       const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
       const passkeys: any[] = (await secureStorage.isSetup()) && secureStorage.isStorageUnlocked()
         ? await secureStorage.getPasskeys()
         : [];
 
-      const statusResult = await chrome.storage.local.get(SYNC_STATUS_KEY);
+      const statusResult = await this.storageGet(SYNC_STATUS_KEY);
       const persistedStatus = statusResult?.[SYNC_STATUS_KEY] || {};
 
       this.syncStatus = {
@@ -1458,7 +1474,7 @@ class BackgroundService {
 
   private async updateSyncStatus(updates: Partial<SyncStatus>): Promise<void> {
     this.syncStatus = { ...this.syncStatus, ...updates };
-    await chrome.storage.local.set({ [SYNC_STATUS_KEY]: this.syncStatus });
+    await this.storageSet({ [SYNC_STATUS_KEY]: this.syncStatus });
     this.logSync('SYNC_STATUS_UPDATE', updates);
   }
 
@@ -1506,7 +1522,7 @@ class BackgroundService {
   }
 
   private async triggerSync(): Promise<void> {
-    const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
+    const configResult = await this.storageGet(SYNC_CONFIG_KEY);
     const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
 
     if (!config?.enabled) {
@@ -1588,7 +1604,7 @@ class BackgroundService {
       }
 
       // Migrate existing sync config to secure storage if present
-      const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
+      const configResult = await this.storageGet(SYNC_CONFIG_KEY);
       const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
       if (config?.seedHash) {
         await secureStorage.storeSyncConfig({
@@ -1611,7 +1627,7 @@ class BackgroundService {
       if (passkeys.length > 0) {
         logger.info(`Migrated ${passkeys.length} passkeys to secure storage`);
         // Remove the plaintext passkeys now that they are encrypted
-        await new Promise<void>((resolve) => chrome.storage.local.remove(PASSKEY_STORAGE_KEY, resolve));
+        await this.storageRemove(PASSKEY_STORAGE_KEY);
       }
 
       return { success: true, message: 'Master password setup complete' };
