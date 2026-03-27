@@ -21,12 +21,18 @@
   let importBtn: HTMLButtonElement;
   let clearBtn: HTMLButtonElement;
   let syncSettingsBtn: HTMLButtonElement;
+  let lockBtn: HTMLButtonElement;
+  let settingsBtn: HTMLButtonElement;
   let confirmModal: HTMLElement;
   let searchInput: HTMLInputElement;
   let searchClearBtn: HTMLButtonElement;
   let debugLoggingToggle: HTMLInputElement;
   let setupPanelEl: HTMLElement;
   let unlockPanelEl: HTMLElement;
+  let settingsModal: HTMLElement;
+
+  // Tracks whether vault is currently unlocked (used to show/hide Lock button)
+  let vaultUnlocked = false;
 
   let allPasskeys: any[] = [];
 
@@ -49,11 +55,14 @@
     importBtn = document.getElementById('import-btn') as HTMLButtonElement;
     clearBtn = document.getElementById('clear-btn') as HTMLButtonElement;
     syncSettingsBtn = document.getElementById('sync-settings-btn') as HTMLButtonElement;
+    lockBtn = document.getElementById('lock-btn') as HTMLButtonElement;
+    settingsBtn = document.getElementById('settings-btn') as HTMLButtonElement;
     searchInput = document.getElementById('search-input') as HTMLInputElement;
     searchClearBtn = document.getElementById('search-clear') as HTMLButtonElement;
     debugLoggingToggle = document.getElementById('debug-logging-toggle') as HTMLInputElement;
     setupPanelEl = document.getElementById('setup-panel') as HTMLElement;
     unlockPanelEl = document.getElementById('unlock-panel') as HTMLElement;
+    settingsModal = document.getElementById('settings-modal') as HTMLElement;
   }
 
   // ─── Master password panels ──────────────────────────────────────────────
@@ -65,6 +74,7 @@
     unlockPanelEl.style.display = 'none';
     setupPanelEl.style.display = 'flex';
     passkeyCountEl.textContent = '';
+    setLockButtonVisible(false);
   }
 
   function showUnlockPanel(): void {
@@ -74,6 +84,20 @@
     setupPanelEl.style.display = 'none';
     unlockPanelEl.style.display = 'flex';
     passkeyCountEl.textContent = '';
+    setLockButtonVisible(false);
+    // Check if PIN is available and pre-select that tab if so
+    chrome.runtime.sendMessage({ type: 'HAS_PIN' }).then((resp) => {
+      if (resp?.hasPin) {
+        activateUnlockTab('pin');
+      }
+    }).catch(() => {/* ignore */});
+  }
+
+  function setLockButtonVisible(visible: boolean): void {
+    vaultUnlocked = visible;
+    if (lockBtn) {
+      lockBtn.style.display = visible ? '' : 'none';
+    }
   }
 
   function hideSecurityPanels(): void {
@@ -126,12 +150,19 @@
       });
     }
 
-    // Unlock panel
+    // Unlock panel – tab switching
+    const tabPassword = document.getElementById('unlock-tab-password') as HTMLButtonElement;
+    const tabPin = document.getElementById('unlock-tab-pin') as HTMLButtonElement;
+    if (tabPassword && tabPin) {
+      tabPassword.addEventListener('click', () => activateUnlockTab('password'));
+      tabPin.addEventListener('click', () => activateUnlockTab('pin'));
+    }
+
+    // Unlock panel – form submission
     const unlockForm = document.getElementById('unlock-form') as HTMLFormElement;
     if (unlockForm) {
       unlockForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const pw = (document.getElementById('unlock-password') as HTMLInputElement).value;
         const errEl = document.getElementById('unlock-error') as HTMLElement;
         errEl.textContent = '';
 
@@ -139,22 +170,211 @@
         submitBtn.disabled = true;
         submitBtn.textContent = 'Unlocking…';
 
+        const isPinMode = tabPin?.classList.contains('active');
+
         try {
-          const response = await chrome.runtime.sendMessage({
-            type: 'UNLOCK_SECURE_STORAGE',
-            payload: { password: pw },
-          });
+          let response: any;
+          if (isPinMode) {
+            const pin = (document.getElementById('unlock-pin') as HTMLInputElement).value;
+            response = await chrome.runtime.sendMessage({
+              type: 'UNLOCK_WITH_PIN',
+              payload: { pin },
+            });
+          } else {
+            const pw = (document.getElementById('unlock-password') as HTMLInputElement).value;
+            response = await chrome.runtime.sendMessage({
+              type: 'UNLOCK_SECURE_STORAGE',
+              payload: { password: pw },
+            });
+          }
           if (response?.success) {
             hideSecurityPanels();
             loadPasskeys();
           } else {
-            errEl.textContent = response?.error || 'Incorrect password. Please try again.';
+            errEl.textContent =
+              response?.error || (isPinMode ? 'Incorrect PIN.' : 'Incorrect password. Please try again.');
           }
         } catch (err) {
           errEl.textContent = 'Communication error. Please try again.';
         } finally {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Unlock';
+        }
+      });
+    }
+  }
+
+  function activateUnlockTab(tab: 'password' | 'pin'): void {
+    const tabPassword = document.getElementById('unlock-tab-password') as HTMLButtonElement;
+    const tabPin = document.getElementById('unlock-tab-pin') as HTMLButtonElement;
+    const passwordGroup = document.getElementById('unlock-password-group') as HTMLElement;
+    const pinGroup = document.getElementById('unlock-pin-group') as HTMLElement;
+
+    if (tab === 'pin') {
+      tabPin?.classList.add('active');
+      tabPassword?.classList.remove('active');
+      pinGroup.style.display = '';
+      passwordGroup.style.display = 'none';
+    } else {
+      tabPassword?.classList.add('active');
+      tabPin?.classList.remove('active');
+      passwordGroup.style.display = '';
+      pinGroup.style.display = 'none';
+    }
+    const errEl = document.getElementById('unlock-error') as HTMLElement;
+    if (errEl) errEl.textContent = '';
+  }
+
+  // ─── Settings modal ──────────────────────────────────────────────────────
+
+  function openSettingsModal(): void {
+    settingsModal.style.display = 'flex';
+    // Reset forms
+    (document.getElementById('change-password-form') as HTMLFormElement)?.reset();
+    (document.getElementById('set-pin-form') as HTMLFormElement)?.reset();
+    const cpErr = document.getElementById('change-password-error') as HTMLElement;
+    if (cpErr) cpErr.textContent = '';
+    const spErr = document.getElementById('set-pin-error') as HTMLElement;
+    if (spErr) spErr.textContent = '';
+
+    // Load PIN status
+    chrome.runtime.sendMessage({ type: 'HAS_PIN' }).then((resp) => {
+      const pinStatusText = document.getElementById('pin-status-text') as HTMLElement;
+      const clearPinBtn = document.getElementById('clear-pin-btn') as HTMLButtonElement;
+      if (resp?.success) {
+        pinStatusText.textContent = resp.hasPin ? 'A PIN is currently set.' : 'No PIN configured.';
+        clearPinBtn.style.display = resp.hasPin ? '' : 'none';
+      }
+    }).catch(() => {/* ignore */});
+  }
+
+  function closeSettingsModal(): void {
+    settingsModal.style.display = 'none';
+  }
+
+  function setupSettingsModalListeners(): void {
+    const closeBtn = document.getElementById('settings-close-btn') as HTMLButtonElement;
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeSettingsModal);
+    }
+
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) closeSettingsModal();
+    });
+
+    // Change password form
+    const changePasswordForm = document.getElementById('change-password-form') as HTMLFormElement;
+    if (changePasswordForm) {
+      changePasswordForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const currentPw = (document.getElementById('current-password') as HTMLInputElement).value;
+        const newPw = (document.getElementById('new-password') as HTMLInputElement).value;
+        const confirmPw = (document.getElementById('new-password-confirm') as HTMLInputElement).value;
+        const errEl = document.getElementById('change-password-error') as HTMLElement;
+
+        if (newPw.length < 8) {
+          errEl.textContent = 'New password must be at least 8 characters.';
+          return;
+        }
+        if (newPw !== confirmPw) {
+          errEl.textContent = 'New passwords do not match.';
+          return;
+        }
+        errEl.textContent = '';
+
+        const submitBtn = changePasswordForm.querySelector('button[type="submit"]') as HTMLButtonElement;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Changing…';
+
+        try {
+          const response = await chrome.runtime.sendMessage({
+            type: 'CHANGE_MASTER_PASSWORD',
+            payload: { currentPassword: currentPw, newPassword: newPw },
+          });
+          if (response?.success) {
+            showNotification('Master password changed successfully!');
+            changePasswordForm.reset();
+            closeSettingsModal();
+          } else {
+            errEl.textContent = response?.error || 'Failed to change password.';
+          }
+        } catch (err) {
+          errEl.textContent = 'Communication error. Please try again.';
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Change Password';
+        }
+      });
+    }
+
+    // Set PIN form
+    const setPinForm = document.getElementById('set-pin-form') as HTMLFormElement;
+    if (setPinForm) {
+      setPinForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const newPin = (document.getElementById('new-pin') as HTMLInputElement).value;
+        const confirmPin = (document.getElementById('new-pin-confirm') as HTMLInputElement).value;
+        const errEl = document.getElementById('set-pin-error') as HTMLElement;
+
+        if (!/^\d{4,8}$/.test(newPin)) {
+          errEl.textContent = 'PIN must be 4–8 digits.';
+          return;
+        }
+        if (newPin !== confirmPin) {
+          errEl.textContent = 'PINs do not match.';
+          return;
+        }
+        errEl.textContent = '';
+
+        const submitBtn = setPinForm.querySelector('button[type="submit"]') as HTMLButtonElement;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Setting…';
+
+        try {
+          const response = await chrome.runtime.sendMessage({
+            type: 'SET_PIN',
+            payload: { pin: newPin },
+          });
+          if (response?.success) {
+            showNotification('PIN set successfully!');
+            setPinForm.reset();
+            const pinStatusText = document.getElementById('pin-status-text') as HTMLElement;
+            if (pinStatusText) pinStatusText.textContent = 'A PIN is currently set.';
+            const clearPinBtn = document.getElementById('clear-pin-btn') as HTMLButtonElement;
+            if (clearPinBtn) clearPinBtn.style.display = '';
+          } else {
+            errEl.textContent = response?.error || 'Failed to set PIN.';
+          }
+        } catch (err) {
+          errEl.textContent = 'Communication error. Please try again.';
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Set PIN';
+        }
+      });
+    }
+
+    // Clear PIN button
+    const clearPinBtn = document.getElementById('clear-pin-btn') as HTMLButtonElement;
+    if (clearPinBtn) {
+      clearPinBtn.addEventListener('click', async () => {
+        const errEl = document.getElementById('set-pin-error') as HTMLElement;
+        clearPinBtn.disabled = true;
+        try {
+          const response = await chrome.runtime.sendMessage({ type: 'CLEAR_PIN' });
+          if (response?.success) {
+            showNotification('PIN removed.');
+            const pinStatusText = document.getElementById('pin-status-text') as HTMLElement;
+            if (pinStatusText) pinStatusText.textContent = 'No PIN configured.';
+            clearPinBtn.style.display = 'none';
+            (document.getElementById('set-pin-form') as HTMLFormElement)?.reset();
+          } else {
+            if (errEl) errEl.textContent = response?.error || 'Failed to clear PIN.';
+          }
+        } catch (err) {
+          if (errEl) errEl.textContent = 'Communication error. Please try again.';
+        } finally {
+          clearPinBtn.disabled = false;
         }
       });
     }
@@ -234,6 +454,13 @@
     importBtn.addEventListener('click', openImportPage);
     clearBtn.addEventListener('click', clearAllPasskeys);
 
+    if (lockBtn) {
+      lockBtn.addEventListener('click', lockVault);
+    }
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', openSettingsModal);
+    }
+
     const syncSettingsBtnEl = document.getElementById('sync-settings-btn') as HTMLButtonElement;
     if (syncSettingsBtnEl) {
       syncSettingsBtnEl.addEventListener('click', openSyncSettings);
@@ -250,6 +477,22 @@
     debugLoggingToggle.addEventListener('change', handleDebugLoggingToggle);
 
     setupSecurityPanelListeners();
+    setupSettingsModalListeners();
+  }
+
+  async function lockVault(): Promise<void> {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'LOCK_SECURE_STORAGE' });
+      if (response?.success) {
+        setLockButtonVisible(false);
+        showUnlockPanel();
+      } else {
+        showNotification(response?.error || 'Failed to lock vault', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to lock vault:', error);
+      showNotification('Failed to lock vault', 'error');
+    }
   }
 
   async function loadDebugLoggingState(): Promise<void> {
@@ -418,6 +661,8 @@
       if (!response.success) {
         throw new Error(response.error || 'Failed to load passkeys');
       }
+
+      setLockButtonVisible(true);
 
       const passkeys: any[] = response.passkeys || [];
       allPasskeys = passkeys;
