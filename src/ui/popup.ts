@@ -155,7 +155,19 @@
             errEl.textContent = response?.error || 'Setup failed. Please try again.';
           }
         } catch (err) {
-          errEl.textContent = 'Communication error. Please try again.';
+          // Firefox MV2: sendMessage can throw instead of returning undefined.
+          if (isConnectionError(err)) {
+            const stillNeedsSetup = await checkNeedsSetup();
+            if (!stillNeedsSetup) {
+              showNotification('Master password set up successfully!');
+              hideSecurityPanels();
+              loadPasskeys();
+            } else {
+              errEl.textContent = 'Setup failed. Please try again.';
+            }
+          } else {
+            errEl.textContent = 'Communication error. Please try again.';
+          }
         } finally {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Set Up Vault';
@@ -213,7 +225,12 @@
               response?.error || (isPinMode ? 'Incorrect PIN.' : 'Incorrect password. Please try again.');
           }
         } catch (err) {
-          errEl.textContent = 'Communication error. Please try again.';
+          // Firefox MV2: sendMessage can throw instead of returning undefined.
+          if (isConnectionError(err)) {
+            loadPasskeys();
+          } else {
+            errEl.textContent = 'Communication error. Please try again.';
+          }
         } finally {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Unlock';
@@ -516,7 +533,7 @@
   async function loadDebugLoggingState(): Promise<void> {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'GET_DEBUG_LOGGING' });
-      if (response.success) {
+      if (response?.success) {
         debugLoggingToggle.checked = response.enabled;
       }
     } catch (error) {
@@ -531,7 +548,7 @@
         type: 'SET_DEBUG_LOGGING',
         payload: { enabled },
       });
-      if (response.success) {
+      if (response?.success) {
         showNotification(`Debug logging ${enabled ? 'enabled' : 'disabled'}`);
       } else {
         showNotification('Failed to toggle debug logging', 'error');
@@ -624,6 +641,22 @@
   // ─── Passkey loading ─────────────────────────────────────────────────────
 
   /**
+   * Returns true when `err` looks like a browser-extension connection error
+   * (e.g. background event page not yet registered its message handler, or the
+   * port was closed before the response arrived).  In Firefox MV2 these errors
+   * are thrown rather than returning undefined, so they need their own branch.
+   */
+  function isConnectionError(err: unknown): boolean {
+    const msg = (err as Error)?.message ?? '';
+    return (
+      msg.includes('Could not establish connection') ||
+      msg.includes('Receiving end does not exist') ||
+      msg.includes('Extension context invalidated') ||
+      msg.includes('message port closed')
+    );
+  }
+
+  /**
    * Directly checks chrome.storage.local (no background message) to determine
    * whether the master password has ever been set up.  Used as a fallback when
    * the background returns undefined (Firefox MV2 non-persistent event-page
@@ -694,6 +727,22 @@
       }
     } catch (error) {
       console.error('Error loading passkeys:', error);
+
+      // Firefox MV2: sendMessage can throw a connection error when the background
+      // event page is still waking up (port not yet open).  Treat this identically
+      // to a missing/undefined response and fall back to a direct storage check so
+      // the popup shows the correct setup or unlock panel instead of an error.
+      if (isConnectionError(error)) {
+        loadingEl.style.display = 'none';
+        const needsSetup = await checkNeedsSetup();
+        if (needsSetup) {
+          showSetupPanel();
+        } else {
+          showUnlockPanel();
+        }
+        return;
+      }
+
       // Restore loadingEl visibility before replacing its content so the error
       // is actually visible (if the error is thrown after loadingEl was already
       // hidden, the catch block would silently show nothing — blank window).
