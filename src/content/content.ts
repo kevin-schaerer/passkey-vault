@@ -117,7 +117,7 @@ class ContentScript {
           timestamp: Date.now(),
         });
 
-        if (response.success && response.credential) {
+        if (response?.success && response?.credential) {
           // Show success notification
           const userName =
             payload.publicKey?.user?.displayName || payload.publicKey?.user?.name || 'User';
@@ -140,15 +140,15 @@ class ContentScript {
           );
         } else {
           // Show error if it's not a duplicate passkey error
-          if (response.name !== 'InvalidStateError') {
-            _showErrorNotification('Passkey Error', response.error || 'Failed to create passkey');
+          if (response?.name !== 'InvalidStateError') {
+            _showErrorNotification('Passkey Error', response?.error || 'Failed to create passkey');
           }
           window.postMessage(
             {
               source: 'PASSKEY_VAULT_CONTENT',
               type: 'PASSKEY_CREATE_RESPONSE',
               requestId,
-              result: response,
+              result: response ?? { success: false, error: 'No response from background' },
             },
             '*'
           );
@@ -177,7 +177,7 @@ class ContentScript {
           timestamp: Date.now(),
         });
 
-        if (!listResponse.success || !listResponse.passkeys || listResponse.passkeys.length === 0) {
+        if (!listResponse || !listResponse.success || !listResponse.passkeys || listResponse.passkeys.length === 0) {
           // No passkeys found, return error to trigger fallback
           window.postMessage(
             {
@@ -237,7 +237,7 @@ class ContentScript {
           timestamp: Date.now(),
         });
 
-        if (response.success && response.credential) {
+        if (response?.success && response?.credential) {
           // Show success notification
           const selectedPasskey = passkeyOptions.find((pk) => pk.id === selectedId);
           const userName = selectedPasskey?.userDisplayName || selectedPasskey?.userName || 'User';
@@ -255,13 +255,13 @@ class ContentScript {
             '*'
           );
         } else {
-          _showErrorNotification('Sign In Failed', response.error || 'Failed to use passkey');
+          _showErrorNotification('Sign In Failed', response?.error || 'Failed to use passkey');
           window.postMessage(
             {
               source: 'PASSKEY_VAULT_CONTENT',
               type: 'PASSKEY_GET_RESPONSE',
               requestId,
-              result: response,
+              result: response ?? { success: false, error: 'No response from background' },
             },
             '*'
           );
@@ -377,7 +377,7 @@ class ContentScript {
         timestamp: Date.now(),
       });
 
-      if (response.success) {
+      if (response?.success) {
         // Open emergency UI
         this.showEmergencyUI();
       }

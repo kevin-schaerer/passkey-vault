@@ -199,7 +199,10 @@ async function buildForTarget(browserTarget) {
 
   // Set version from git
   manifest.version = version;
-  manifest.version_name = versionName;
+  // version_name is Chrome-only; Firefox MV2 doesn't support it and logs a warning
+  if (!isFirefox) {
+    manifest.version_name = versionName;
+  }
 
   if (isFirefox) {
     manifest.background.scripts = ['background.js'];

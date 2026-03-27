@@ -102,7 +102,7 @@ class BackgroundService {
   private async initializeSyncService(): Promise<void> {
     try {
       const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
-      const config: SyncConfig = configResult[SYNC_CONFIG_KEY];
+      const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
 
       if (config?.enabled && config.chainId && config.deviceId && config.seedHash) {
         logger.info('Starting sync service...');
@@ -264,7 +264,7 @@ class BackgroundService {
       logger.debug('Creating passkey for', rpId, 'user:', user?.name);
 
       const existingResult = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const existingPasskeys: any[] = existingResult[PASSKEY_STORAGE_KEY] || [];
+      const existingPasskeys: any[] = existingResult?.[PASSKEY_STORAGE_KEY] || [];
       const existingPasskey = existingPasskeys.find((p) => p.rpId === rpId);
 
       if (existingPasskey) {
@@ -329,7 +329,7 @@ class BackgroundService {
       const attestationObject = this.createAttestationObjectNone(authenticatorData);
 
       const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
 
       passkeys.push({
         id: credentialIdBase64,
@@ -393,7 +393,7 @@ class BackgroundService {
       logger.debug('Getting passkey for', rpId, 'selectedId:', selectedPasskeyId);
 
       const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const matchingPasskeys = passkeys.filter((p) => p.rpId === rpId);
 
       if (matchingPasskeys.length === 0) {
@@ -968,7 +968,7 @@ class BackgroundService {
     try {
       const { publicKey, origin, options } = payload;
       const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const rpId = options?.publicKey?.rpId || new URL(origin).hostname;
       const credentialId = publicKey?.id || publicKey?.rawId;
 
@@ -1012,7 +1012,7 @@ class BackgroundService {
       if (!rpId) return { success: false, error: 'No rpId provided' };
 
       const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const matchingPasskeys = passkeys.filter((p) => p.rpId === rpId);
 
       logger.debug('Found', matchingPasskeys.length, 'passkeys for', rpId);
@@ -1029,7 +1029,7 @@ class BackgroundService {
   ): Promise<any> {
     try {
       const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       return { success: true, passkeys, count: passkeys.length };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -1045,7 +1045,7 @@ class BackgroundService {
       if (!rpId) return { success: false, error: 'No rpId provided' };
 
       const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const matchingPasskeys = passkeys.filter((p) => p.rpId === rpId);
 
       logger.debug('Found', matchingPasskeys.length, 'passkeys for', rpId);
@@ -1074,7 +1074,7 @@ class BackgroundService {
     try {
       const { credentialId } = payload;
       const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const filtered = passkeys.filter(
         (p) => p.credentialId !== credentialId && p.id !== credentialId
       );
@@ -1266,9 +1266,9 @@ class BackgroundService {
   private async getSyncChainInfo(): Promise<any> {
     try {
       const chainResult = await chrome.storage.local.get(SYNC_DEVICES_KEY);
-      const chain: SyncChain = chainResult[SYNC_DEVICES_KEY];
+      const chain: SyncChain = chainResult?.[SYNC_DEVICES_KEY];
       const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
-      const config: SyncConfig = configResult[SYNC_CONFIG_KEY];
+      const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
 
       if (!chain || !config || !config.enabled) {
         return { success: true, chainInfo: null };
@@ -1293,7 +1293,7 @@ class BackgroundService {
   private async removeSyncDevice(deviceId: string): Promise<any> {
     try {
       const result = await chrome.storage.local.get(SYNC_DEVICES_KEY);
-      const chain: SyncChain = result[SYNC_DEVICES_KEY];
+      const chain: SyncChain = result?.[SYNC_DEVICES_KEY];
 
       if (!chain) return { success: false, error: 'Sync chain not found' };
 
@@ -1322,12 +1322,12 @@ class BackgroundService {
   private async getSyncStatus(): Promise<any> {
     try {
       const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
-      const config: SyncConfig = configResult[SYNC_CONFIG_KEY];
+      const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
       const passkeysResult = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = passkeysResult[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = passkeysResult?.[PASSKEY_STORAGE_KEY] || [];
 
       const statusResult = await chrome.storage.local.get(SYNC_STATUS_KEY);
-      const persistedStatus = statusResult[SYNC_STATUS_KEY] || {};
+      const persistedStatus = statusResult?.[SYNC_STATUS_KEY] || {};
 
       this.syncStatus = {
         ...this.syncStatus,
@@ -1409,7 +1409,7 @@ class BackgroundService {
 
   private async triggerSync(): Promise<void> {
     const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
-    const config: SyncConfig = configResult[SYNC_CONFIG_KEY];
+    const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
 
     if (!config?.enabled) {
       this.logSync('TRIGGER_SYNC_SKIPPED', { reason: 'sync not enabled' });
@@ -1428,7 +1428,7 @@ class BackgroundService {
 
     try {
       const passkeysResult = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = passkeysResult[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = passkeysResult?.[PASSKEY_STORAGE_KEY] || [];
 
       const syncStatus = syncService.getStatus();
       if (!syncStatus.connected) {
@@ -1487,7 +1487,7 @@ class BackgroundService {
 
       // Migrate existing sync config to secure storage if present
       const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
-      const config: SyncConfig = configResult[SYNC_CONFIG_KEY];
+      const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
       if (config?.seedHash) {
         await secureStorage.storeSyncConfig({
           chainId: config.chainId || '',
@@ -1502,7 +1502,7 @@ class BackgroundService {
 
       // Migrate existing passkeys to secure storage
       const passkeysResult = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = passkeysResult[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = passkeysResult?.[PASSKEY_STORAGE_KEY] || [];
       for (const passkey of passkeys) {
         await secureStorage.upsertPasskey(passkey);
       }
