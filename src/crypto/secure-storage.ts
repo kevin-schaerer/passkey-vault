@@ -23,6 +23,13 @@ const STORAGE_KEYS = {
   PIN_SALT: 'passext_pin_salt',
 } as const;
 
+// Key used in chrome.storage.session to persist the encryption key across
+// service-worker suspensions within a single browser session.
+const SESSION_STORAGE_KEY = 'passext_session_key';
+
+// Value encrypted and stored to verify the master password is correct.
+const MASTER_KEY_CHECK_VALUE = 'passkey-vault-check';
+
 export interface SecureStorageConfig {
   seedHash: string;
   chainId: string;
@@ -139,6 +146,52 @@ function storageRemove(keys: string | string[]): Promise<void> {
   });
 }
 
+/**
+ * chrome.storage.session helpers – available in Chrome MV3 only.
+ * In Firefox (or any environment where session storage is absent) these
+ * functions are no-ops so that the rest of the code can call them safely.
+ */
+function sessionStorageGet(key: string): Promise<Record<string, any>> {
+  if (!chrome.storage?.session) {
+    return Promise.resolve({});
+  }
+  return new Promise((resolve, reject) => {
+    chrome.storage.session.get(key, (result) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(result ?? {});
+      }
+    });
+  });
+}
+
+function sessionStorageSet(data: Record<string, any>): Promise<void> {
+  if (!chrome.storage?.session) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    chrome.storage.session.set(data, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+function sessionStorageRemove(key: string): void {
+  if (!chrome.storage?.session) {
+    return;
+  }
+  chrome.storage.session.remove(key, () => {
+    if (chrome.runtime.lastError) {
+      console.warn('SecureStorage: failed to remove session key:', chrome.runtime.lastError.message);
+    }
+  });
+}
+
 function uint8ArrayToBase64(arr: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < arr.length; i++) {
@@ -171,6 +224,7 @@ export class SecureStorage {
   private encryptionKey: Uint8Array | null = null;
   private salt: Uint8Array | null = null;
   private isUnlocked = false;
+  private _restoringFromSession = false;
 
   /**
    * Initialize secure storage with a master password
@@ -201,7 +255,7 @@ export class SecureStorage {
             checkResult[STORAGE_KEYS.MASTER_KEY_CHECK],
             this.encryptionKey
           );
-          if (decrypted !== 'passkey-vault-check') {
+          if (decrypted !== MASTER_KEY_CHECK_VALUE) {
             this.lock();
             return false;
           }
@@ -211,13 +265,14 @@ export class SecureStorage {
         }
       } else {
         // First time - store check value
-        const checkData = encryptData('passkey-vault-check', this.encryptionKey);
+        const checkData = encryptData(MASTER_KEY_CHECK_VALUE, this.encryptionKey);
         await storageSet({
           [STORAGE_KEYS.MASTER_KEY_CHECK]: checkData,
         });
       }
 
       this.isUnlocked = true;
+      await sessionStorageSet({ [SESSION_STORAGE_KEY]: uint8ArrayToBase64(this.encryptionKey!) });
       return true;
     } catch (error) {
       console.error('SecureStorage initialization failed:', error);
@@ -250,6 +305,9 @@ export class SecureStorage {
       this.encryptionKey = null;
     }
     this.isUnlocked = false;
+    // Clear the session key so the vault cannot be automatically restored
+    // after a manual lock (fire-and-forget; failure is non-critical).
+    sessionStorageRemove(SESSION_STORAGE_KEY);
   }
 
   /**
@@ -257,6 +315,65 @@ export class SecureStorage {
    */
   setAutoLockTimeout(_ms: number): void {
     // Auto-lock is disabled; vault only locks manually or on browser/session close
+  }
+
+  /**
+   * Attempt to restore the encryption key from chrome.storage.session.
+   * This handles the case where the Chrome MV3 service worker was suspended
+   * and the in-memory key was wiped, but the browser session is still active.
+   * Returns true if the key was successfully restored (or was already loaded).
+   */
+  async tryRestoreFromSession(): Promise<boolean> {
+    if (this.isUnlocked && this.encryptionKey !== null) {
+      return true; // Already unlocked
+    }
+    if (this._restoringFromSession) {
+      // Another concurrent call is already restoring; wait briefly and recheck.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return this.isUnlocked && this.encryptionKey !== null;
+    }
+    this._restoringFromSession = true;
+    try {
+      const result = await sessionStorageGet(SESSION_STORAGE_KEY);
+      const keyB64 = result[SESSION_STORAGE_KEY];
+      if (!keyB64) {
+        return false;
+      }
+
+      const key = base64ToUint8Array(keyB64);
+
+      // Verify the restored key is still valid against the stored check value
+      const checkResult = await storageGet(STORAGE_KEYS.MASTER_KEY_CHECK);
+      if (!checkResult[STORAGE_KEYS.MASTER_KEY_CHECK]) {
+        secureWipe(key);
+        return false;
+      }
+
+      try {
+        const decrypted = decryptData(checkResult[STORAGE_KEYS.MASTER_KEY_CHECK], key);
+        if (decrypted !== MASTER_KEY_CHECK_VALUE) {
+          secureWipe(key);
+          sessionStorageRemove(SESSION_STORAGE_KEY);
+          return false;
+        }
+      } catch {
+        secureWipe(key);
+        sessionStorageRemove(SESSION_STORAGE_KEY);
+        return false;
+      }
+
+      if (this.encryptionKey) {
+        secureWipe(this.encryptionKey);
+      }
+      this.encryptionKey = key;
+      this.isUnlocked = true;
+      return true;
+    } catch (error) {
+      console.error('SecureStorage: failed to restore from session:', error);
+      return false;
+    } finally {
+      this._restoringFromSession = false;
+    }
   }
 
   /**
@@ -405,7 +522,7 @@ export class SecureStorage {
       this.salt = newSalt;
 
       // Store new check value
-      const checkData = encryptData('passkey-vault-check', this.encryptionKey);
+      const checkData = encryptData(MASTER_KEY_CHECK_VALUE, this.encryptionKey);
       await storageSet({
         [STORAGE_KEYS.MASTER_KEY_CHECK]: checkData,
       });
@@ -417,6 +534,9 @@ export class SecureStorage {
       if (passkeys.length > 0) {
         await this.storePasskeys(passkeys);
       }
+
+      // Update the session key to reflect the new encryption key
+      await sessionStorageSet({ [SESSION_STORAGE_KEY]: uint8ArrayToBase64(this.encryptionKey!) });
 
       return true;
     } catch (error) {
@@ -495,7 +615,7 @@ export class SecureStorage {
       if (checkResult[STORAGE_KEYS.MASTER_KEY_CHECK]) {
         try {
           const decrypted = decryptData(checkResult[STORAGE_KEYS.MASTER_KEY_CHECK], masterKey);
-          if (decrypted !== 'passkey-vault-check') {
+          if (decrypted !== MASTER_KEY_CHECK_VALUE) {
             secureWipe(masterKey);
             return false;
           }
@@ -510,6 +630,7 @@ export class SecureStorage {
       }
       this.encryptionKey = masterKey;
       this.isUnlocked = true;
+      await sessionStorageSet({ [SESSION_STORAGE_KEY]: uint8ArrayToBase64(this.encryptionKey!) });
       return true;
     } catch (error) {
       console.error('SecureStorage PIN unlock failed:', error);
