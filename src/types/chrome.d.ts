@@ -11,7 +11,7 @@ declare global {
         onMessage: MessageHandlers;
         onInstalled: Event<OnInstalledDetailsType>;
         onStartup: Event<undefined>;
-        onSuspend: Event<undefined>;
+        onSuspend?: Event<undefined>;
         id?: string;
         lastError?: { message?: string };
         getURL(path: string): string;

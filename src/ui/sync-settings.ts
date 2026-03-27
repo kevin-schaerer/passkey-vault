@@ -106,7 +106,7 @@ function setupEventListeners(): void {
 
   if (addDeviceBtn) {
     addDeviceBtn.addEventListener('click', () => {
-      window.open(chrome.runtime.getURL('sync-setup.html'));
+      chrome.tabs.create({ url: chrome.runtime.getURL('sync-setup.html') });
     });
   }
 

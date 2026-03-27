@@ -212,9 +212,12 @@ class BackgroundService {
     chrome.runtime.onStartup.addListener(() => {
       this.handleStartup();
     });
-    chrome.runtime.onSuspend.addListener(() => {
-      this.handleSuspend();
-    });
+    // onSuspend is only available in Chrome (MV3 service workers), not in Firefox
+    if (chrome.runtime.onSuspend) {
+      chrome.runtime.onSuspend.addListener(() => {
+        this.handleSuspend();
+      });
+    }
   }
 
   private handleInstalled(details: chrome.runtime.InstalledDetails): void {
