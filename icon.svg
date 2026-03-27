@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a2660"/>
+      <stop offset="100%" stop-color="#0f1535"/>
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5a9aee"/>
+      <stop offset="100%" stop-color="#2a60c0"/>
+    </linearGradient>
+    <linearGradient id="keyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffd200"/>
+      <stop offset="100%" stop-color="#d8a800"/>
+    </linearGradient>
+    <clipPath id="rrect">
+      <rect width="512" height="512" rx="112" ry="112"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background: dark navy rounded square -->
+  <rect width="512" height="512" rx="112" ry="112" fill="url(#bgGrad)"/>
+
+  <!-- Shield (heater shield shape) -->
+  <!-- Upper rectangular portion -->
+  <path d="
+    M 62,46
+    H 450
+    Q 462,46 462,58
+    V 358
+    Q 462,382 440,402
+    L 272,470
+    Q 256,478 240,470
+    L 72,402
+    Q 50,382 50,358
+    V 58
+    Q 50,46 62,46
+    Z
+  " fill="url(#shieldGrad)" clip-path="url(#rrect)"/>
+
+  <!-- Key symbol (centred in shield) -->
+  <!-- Bow (ring) -->
+  <circle cx="210" cy="232" r="68" fill="url(#keyGrad)"/>
+  <circle cx="210" cy="232" r="33" fill="url(#shieldGrad)"/>
+
+  <!-- Blade (horizontal bar) -->
+  <rect x="258" y="201" width="196" height="62" rx="8" fill="url(#keyGrad)"/>
+
+  <!-- Tooth 1 -->
+  <rect x="318" y="263" width="46" height="52" rx="6" fill="url(#keyGrad)"/>
+
+  <!-- Tooth 2 -->
+  <rect x="394" y="263" width="46" height="52" rx="6" fill="url(#keyGrad)"/>
+</svg>
