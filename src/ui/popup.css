@@ -1490,6 +1490,89 @@ html:has(.sync-settings) {
   padding: 7px 12px;
 }
 
+/* ── Site Filter ─────────────────────────────────────────────────────────── */
+.site-filter-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  margin-bottom: 10px;
+  user-select: none;
+}
+
+.site-filter-toggle-row input[type="checkbox"] {
+  accent-color: var(--primary);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.site-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.site-input-row .form-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.site-input-row .btn {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.site-filter-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.site-filter-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.site-filter-item-label {
+  color: var(--text-primary);
+  font-family: monospace;
+  word-break: break-all;
+}
+
+.site-filter-remove-btn {
+  flex-shrink: 0;
+  padding: 2px 4px;
+  color: var(--text-muted);
+}
+
+.site-filter-remove-btn:hover {
+  color: var(--danger);
+}
+
+.site-filter-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
 /* ── Unlock tabs ─────────────────────────────────────────────────────────── */
 .unlock-tabs {
   display: flex;

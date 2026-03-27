@@ -36,11 +36,16 @@
 
   let allPasskeys: any[] = [];
 
+  // Site filter state
+  let siteFilterEnabled = false;
+  let allowedSites: string[] = [];
+
   // Initialize popup when DOM is loaded
   document.addEventListener('DOMContentLoaded', () => {
     initializeElements();
     createConfirmModal();
     loadDebugLoggingState();
+    loadSiteFilterSettings();
     loadPasskeys();
     setupEventListeners();
   });
@@ -396,6 +401,8 @@
         }
       });
     }
+
+    setupSiteFilterListeners();
   }
 
   // ─── Confirm modal ───────────────────────────────────────────────────────
@@ -542,6 +549,160 @@
       showNotification('Failed to toggle debug logging', 'error');
       debugLoggingToggle.checked = !enabled;
     }
+  }
+
+  // ─── Site Filter ─────────────────────────────────────────────────────────
+
+  async function loadSiteFilterSettings(): Promise<void> {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_SITE_FILTER' });
+      if (response?.success) {
+        siteFilterEnabled = response.enabled;
+        allowedSites = response.allowedSites ?? [];
+        renderSiteFilterUI();
+      }
+    } catch (error) {
+      console.error('Failed to load site filter settings:', error);
+    }
+  }
+
+  async function saveSiteFilterSettings(): Promise<void> {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'SET_SITE_FILTER',
+        payload: { enabled: siteFilterEnabled, allowedSites },
+      });
+      if (!response?.success) {
+        showNotification('Failed to save site filter settings', 'error');
+      }
+    } catch (error) {
+      console.error('Failed to save site filter settings:', error);
+      showNotification('Failed to save site filter settings', 'error');
+    }
+  }
+
+  function renderSiteFilterUI(): void {
+    const toggle = document.getElementById('site-filter-enabled') as HTMLInputElement | null;
+    const body = document.getElementById('site-filter-body') as HTMLElement | null;
+    if (toggle) toggle.checked = siteFilterEnabled;
+    if (body) body.style.display = siteFilterEnabled ? '' : 'none';
+    renderSiteList();
+  }
+
+  function renderSiteList(): void {
+    const list = document.getElementById('site-filter-list') as HTMLUListElement | null;
+    if (!list) return;
+    list.innerHTML = '';
+    if (allowedSites.length === 0) {
+      const empty = document.createElement('li');
+      empty.className = 'site-filter-empty';
+      empty.textContent = 'No sites added yet.';
+      list.appendChild(empty);
+      return;
+    }
+    allowedSites.forEach((site) => {
+      const li = document.createElement('li');
+      li.className = 'site-filter-item';
+      const label = document.createElement('span');
+      label.className = 'site-filter-item-label';
+      label.textContent = site;
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'btn btn-icon btn-ghost site-filter-remove-btn';
+      removeBtn.title = `Remove ${site}`;
+      removeBtn.setAttribute('aria-label', `Remove ${site}`);
+      removeBtn.innerHTML =
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      removeBtn.addEventListener('click', () => removeSite(site));
+      li.appendChild(label);
+      li.appendChild(removeBtn);
+      list.appendChild(li);
+    });
+  }
+
+  function normalizeSiteInput(raw: string): string {
+    raw = raw.trim().toLowerCase();
+    // Strip common prefixes so users can paste full URLs
+    raw = raw.replace(/^https?:\/\//, '').replace(/^www\./, '');
+    // Keep only the hostname part (drop any path/query)
+    const slashIdx = raw.indexOf('/');
+    if (slashIdx !== -1) raw = raw.slice(0, slashIdx);
+    return raw;
+  }
+
+  async function addSite(raw: string): Promise<void> {
+    const errEl = document.getElementById('site-filter-error') as HTMLElement | null;
+    const site = normalizeSiteInput(raw);
+    if (!site) {
+      if (errEl) errEl.textContent = 'Please enter a valid domain.';
+      return;
+    }
+    // Basic hostname validation
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(site)) {
+      if (errEl) errEl.textContent = `"${site}" does not look like a valid domain.`;
+      return;
+    }
+    if (allowedSites.includes(site)) {
+      if (errEl) errEl.textContent = `"${site}" is already in the list.`;
+      return;
+    }
+    if (errEl) errEl.textContent = '';
+    allowedSites = [...allowedSites, site].sort();
+    renderSiteList();
+    await saveSiteFilterSettings();
+  }
+
+  async function removeSite(site: string): Promise<void> {
+    allowedSites = allowedSites.filter((s) => s !== site);
+    renderSiteList();
+    await saveSiteFilterSettings();
+  }
+
+  function setupSiteFilterListeners(): void {
+    const toggle = document.getElementById('site-filter-enabled') as HTMLInputElement | null;
+    const body = document.getElementById('site-filter-body') as HTMLElement | null;
+    const addBtn = document.getElementById('site-filter-add-btn') as HTMLButtonElement | null;
+    const input = document.getElementById('site-filter-input') as HTMLInputElement | null;
+    const addCurrentBtn = document.getElementById(
+      'site-filter-add-current-btn'
+    ) as HTMLButtonElement | null;
+    const errEl = document.getElementById('site-filter-error') as HTMLElement | null;
+
+    toggle?.addEventListener('change', async () => {
+      siteFilterEnabled = toggle.checked;
+      if (body) body.style.display = siteFilterEnabled ? '' : 'none';
+      await saveSiteFilterSettings();
+    });
+
+    const doAdd = async () => {
+      if (!input) return;
+      await addSite(input.value);
+      input.value = '';
+    };
+
+    addBtn?.addEventListener('click', doAdd);
+
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doAdd();
+      }
+      if (errEl) errEl.textContent = '';
+    });
+
+    addCurrentBtn?.addEventListener('click', async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.url) {
+          const hostname = new URL(tab.url).hostname.replace(/^www\./, '');
+          if (input) input.value = hostname;
+          await addSite(hostname);
+          if (input) input.value = '';
+        }
+      } catch (error) {
+        console.error('Failed to get current tab:', error);
+      }
+    });
   }
 
   function openSyncSettings(): void {

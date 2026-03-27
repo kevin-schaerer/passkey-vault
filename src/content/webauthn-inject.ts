@@ -120,52 +120,72 @@ import { normalizePrfClientExtensionResults } from '../crypto/prf';
       const REQUEST_TIMEOUT_MS = 60000; // 60 seconds for user interaction
       const publicKey = options.publicKey;
 
-      return new Promise((resolve, reject) => {
-        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const timeoutId = window.setTimeout(() => {
-          pendingRequests.delete(requestId);
-          reject(new DOMException('The operation timed out.', 'NotAllowedError'));
-        }, REQUEST_TIMEOUT_MS);
+      try {
+        return await new Promise((resolve, reject) => {
+          const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const timeoutId = window.setTimeout(() => {
+            pendingRequests.delete(requestId);
+            reject(new DOMException('The operation timed out.', 'NotAllowedError'));
+          }, REQUEST_TIMEOUT_MS);
 
-        pendingRequests.set(requestId, { resolve, reject, timeoutId });
+          pendingRequests.set(requestId, { resolve, reject, timeoutId });
 
-        // Serialize the options for message passing
-        const serializablePayload = {
-          publicKey: {
-            rp: publicKey.rp,
-            rpId: publicKey.rp?.id || window.location.hostname,
-            user: {
-              id: serializeBufferSource(publicKey.user?.id),
-              name: publicKey.user?.name,
-              displayName: publicKey.user?.displayName,
+          // Serialize the options for message passing
+          const serializablePayload = {
+            publicKey: {
+              rp: publicKey.rp,
+              rpId: publicKey.rp?.id || window.location.hostname,
+              user: {
+                id: serializeBufferSource(publicKey.user?.id),
+                name: publicKey.user?.name,
+                displayName: publicKey.user?.displayName,
+              },
+              challenge: serializeBufferSource(publicKey.challenge),
+              pubKeyCredParams: publicKey.pubKeyCredParams,
+              timeout: publicKey.timeout,
+              excludeCredentials: publicKey.excludeCredentials?.map((cred: any) => ({
+                id: serializeBufferSource(cred.id),
+                type: cred.type,
+                transports: cred.transports,
+              })),
+              authenticatorSelection: publicKey.authenticatorSelection,
+              attestation: publicKey.attestation,
+              extensions: serializeExtensions(publicKey.extensions),
             },
-            challenge: serializeBufferSource(publicKey.challenge),
-            pubKeyCredParams: publicKey.pubKeyCredParams,
-            timeout: publicKey.timeout,
-            excludeCredentials: publicKey.excludeCredentials?.map((cred: any) => ({
-              id: serializeBufferSource(cred.id),
-              type: cred.type,
-              transports: cred.transports,
-            })),
-            authenticatorSelection: publicKey.authenticatorSelection,
-            attestation: publicKey.attestation,
-            extensions: serializeExtensions(publicKey.extensions),
-          },
-          origin: window.location.origin,
-        };
+            origin: window.location.origin,
+          };
 
-        if (DEBUG) console.log('PassKey Vault: Sending CREATE_PASSKEY request', serializablePayload);
+          if (DEBUG) console.log('PassKey Vault: Sending CREATE_PASSKEY request', serializablePayload);
 
-        window.postMessage(
-          {
-            source: 'PASSKEY_VAULT_PAGE',
-            type: 'PASSKEY_CREATE_REQUEST',
-            payload: serializablePayload,
-            requestId,
-          },
-          '*'
-        );
-      });
+          window.postMessage(
+            {
+              source: 'PASSKEY_VAULT_PAGE',
+              type: 'PASSKEY_CREATE_REQUEST',
+              payload: serializablePayload,
+              requestId,
+            },
+            '*'
+          );
+        });
+      } catch (e: any) {
+        // If the site is not in the allowlist the content script returns a
+        // "No passkeys found" error – fall through to native/other extensions.
+        const shouldFallback =
+          e?.message?.includes('No passkeys found') || e?.message?.includes('not found');
+
+        if (DEBUG) {
+          if (shouldFallback) {
+            console.log('PassKey Vault: Site not in allowlist, using native WebAuthn for create');
+          } else {
+            console.warn('PassKey Vault: Extension create failed', e?.message || e);
+          }
+        }
+
+        if (shouldFallback && nativeCreate) {
+          return nativeCreate(options);
+        }
+        throw e;
+      }
     };
 
     // Override get: try extension-managed passkeys, fall back to native WebAuthn on failure.
