@@ -58,7 +58,7 @@ async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promis
   const bits = await crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',
-      salt,
+      salt: salt.buffer as ArrayBuffer,
       iterations: ENCRYPTION_CONFIG.iterations,
       hash: 'SHA-256',
     },

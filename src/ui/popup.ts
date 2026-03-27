@@ -155,7 +155,19 @@
             errEl.textContent = response?.error || 'Setup failed. Please try again.';
           }
         } catch (err) {
-          errEl.textContent = 'Communication error. Please try again.';
+          // Firefox MV2: sendMessage can throw instead of returning undefined.
+          if (isConnectionError(err)) {
+            const stillNeedsSetup = await checkNeedsSetup();
+            if (!stillNeedsSetup) {
+              showNotification('Master password set up successfully!');
+              hideSecurityPanels();
+              loadPasskeys();
+            } else {
+              errEl.textContent = 'Setup failed. Please try again.';
+            }
+          } else {
+            errEl.textContent = 'Communication error. Please try again.';
+          }
         } finally {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Set Up Vault';
@@ -213,7 +225,12 @@
               response?.error || (isPinMode ? 'Incorrect PIN.' : 'Incorrect password. Please try again.');
           }
         } catch (err) {
-          errEl.textContent = 'Communication error. Please try again.';
+          // Firefox MV2: sendMessage can throw instead of returning undefined.
+          if (isConnectionError(err)) {
+            loadPasskeys();
+          } else {
+            errEl.textContent = 'Communication error. Please try again.';
+          }
         } finally {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Unlock';
@@ -516,7 +533,7 @@
   async function loadDebugLoggingState(): Promise<void> {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'GET_DEBUG_LOGGING' });
-      if (response.success) {
+      if (response?.success) {
         debugLoggingToggle.checked = response.enabled;
       }
     } catch (error) {
@@ -531,7 +548,7 @@
         type: 'SET_DEBUG_LOGGING',
         payload: { enabled },
       });
-      if (response.success) {
+      if (response?.success) {
         showNotification(`Debug logging ${enabled ? 'enabled' : 'disabled'}`);
       } else {
         showNotification('Failed to toggle debug logging', 'error');
