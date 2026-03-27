@@ -153,6 +153,13 @@ class BackgroundService {
   private async routeMessage(message: any, sender: chrome.runtime.MessageSender): Promise<any> {
     const { type, payload } = message;
 
+    // If the service worker was suspended and the in-memory key was wiped,
+    // try to silently restore it from chrome.storage.session so the vault
+    // stays unlocked for the duration of the browser session.
+    if (!secureStorage.isStorageUnlocked()) {
+      await secureStorage.tryRestoreFromSession();
+    }
+
     switch (type) {
       case 'CREATE_PASSKEY':
         return this.handleCreatePasskey(payload, sender);
@@ -257,8 +264,11 @@ class BackgroundService {
   }
 
   private handleSuspend(): void {
-    logger.info('Extension suspending – locking secure storage');
-    secureStorage.lock();
+    logger.info('Extension suspending – encryption key will be restored from session on next wake');
+    // Do not call secureStorage.lock() here: the key is persisted in
+    // chrome.storage.session and will be transparently restored when the
+    // service worker wakes up, keeping the vault unlocked for the entire
+    // browser session without requiring the user to re-enter their password.
   }
 
   /**
