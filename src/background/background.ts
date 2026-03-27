@@ -289,6 +289,14 @@ class BackgroundService {
     logger.debug('Agents initialized (placeholder)');
   }
 
+  private lockedError() {
+    return {
+      success: false,
+      error: 'Secure storage is locked. Please unlock with your master password.',
+      requiresUnlock: true,
+    };
+  }
+
   private async handleCreatePasskey(
     payload: any,
     sender: chrome.runtime.MessageSender
@@ -302,8 +310,11 @@ class BackgroundService {
 
       logger.debug('Creating passkey for', rpId, 'user:', user?.name);
 
-      const existingResult = await this.storageGet(PASSKEY_STORAGE_KEY);
-      const existingPasskeys: any[] = existingResult?.[PASSKEY_STORAGE_KEY] || [];
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.lockedError();
+      }
+
+      const existingPasskeys: any[] = await secureStorage.getPasskeys();
       const existingPasskey = existingPasskeys.find((p) => p.rpId === rpId);
 
       if (existingPasskey) {
@@ -367,10 +378,7 @@ class BackgroundService {
 
       const attestationObject = this.createAttestationObjectNone(authenticatorData);
 
-      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
-
-      passkeys.push({
+      await secureStorage.upsertPasskey({
         id: credentialIdBase64,
         credentialId: credentialIdBase64,
         type: 'public-key',
@@ -391,8 +399,6 @@ class BackgroundService {
         counter: 0,
         prfKey: prfKeyBase64,
       });
-
-      await this.storageSet({ [PASSKEY_STORAGE_KEY]: passkeys });
       logger.debug('Created and stored passkey', credentialIdBase64);
 
       this.logSync('PASSKEY_CREATED', { id: credentialIdBase64, rpId });
@@ -431,8 +437,11 @@ class BackgroundService {
 
       logger.debug('Getting passkey for', rpId, 'selectedId:', selectedPasskeyId);
 
-      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.lockedError();
+      }
+
+      const passkeys: any[] = await secureStorage.getPasskeys();
       const matchingPasskeys = passkeys.filter((p) => p.rpId === rpId);
 
       if (matchingPasskeys.length === 0) {
@@ -523,11 +532,7 @@ class BackgroundService {
 
       const signatureDER = this.convertP1363ToDER(signatureP1363);
 
-      const index = passkeys.findIndex((p) => p.id === passkey.id);
-      if (index >= 0) {
-        passkeys[index] = passkey;
-        await this.storageSet({ [PASSKEY_STORAGE_KEY]: passkeys });
-      }
+      await secureStorage.upsertPasskey(passkey);
 
       logger.debug('Signed assertion for', passkey.id);
 
@@ -1006,13 +1011,14 @@ class BackgroundService {
   ): Promise<any> {
     try {
       const { publicKey, origin, options } = payload;
-      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const rpId = options?.publicKey?.rpId || new URL(origin).hostname;
       const credentialId = publicKey?.id || publicKey?.rawId;
 
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.lockedError();
+      }
+
       if (credentialId) {
-        const existingIndex = passkeys.findIndex((p) => p.credentialId === credentialId);
         const passkeyData = {
           credentialId,
           id: publicKey.id,
@@ -1024,15 +1030,10 @@ class BackgroundService {
           createdAt: Date.now(),
         };
 
-        if (existingIndex >= 0) {
-          passkeys[existingIndex] = passkeyData;
-        } else {
-          passkeys.push(passkeyData);
-        }
-
-        await this.storageSet({ [PASSKEY_STORAGE_KEY]: passkeys });
+        await secureStorage.upsertPasskey(passkeyData);
+        const allPasskeys = await secureStorage.getPasskeys();
         logger.debug('Stored passkey', credentialId, 'for', rpId);
-        return { success: true, message: 'Passkey stored successfully', count: passkeys.length };
+        return { success: true, message: 'Passkey stored successfully', count: allPasskeys.length };
       }
       return { success: false, error: 'No credential ID in payload' };
     } catch (error: any) {
@@ -1050,9 +1051,11 @@ class BackgroundService {
       const rpId = publicKey?.rpId || (origin ? new URL(origin).hostname : null);
       if (!rpId) return { success: false, error: 'No rpId provided' };
 
-      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
-      const matchingPasskeys = passkeys.filter((p) => p.rpId === rpId);
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.lockedError();
+      }
+
+      const matchingPasskeys = await secureStorage.getPasskeysForRp(rpId);
 
       logger.debug('Found', matchingPasskeys.length, 'passkeys for', rpId);
       return { success: true, passkeys: matchingPasskeys, count: matchingPasskeys.length, rpId };
@@ -1067,8 +1070,11 @@ class BackgroundService {
     sender: chrome.runtime.MessageSender
   ): Promise<any> {
     try {
-      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.lockedError();
+      }
+
+      const passkeys: any[] = await secureStorage.getPasskeys();
       return { success: true, passkeys, count: passkeys.length };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -1083,9 +1089,11 @@ class BackgroundService {
       const { rpId } = payload;
       if (!rpId) return { success: false, error: 'No rpId provided' };
 
-      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
-      const matchingPasskeys = passkeys.filter((p) => p.rpId === rpId);
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.lockedError();
+      }
+
+      const matchingPasskeys = await secureStorage.getPasskeysForRp(rpId);
 
       logger.debug('Found', matchingPasskeys.length, 'passkeys for', rpId);
       return {
@@ -1112,15 +1120,14 @@ class BackgroundService {
   ): Promise<any> {
     try {
       const { credentialId } = payload;
-      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
-      const filtered = passkeys.filter(
-        (p) => p.credentialId !== credentialId && p.id !== credentialId
-      );
 
-      if (filtered.length < passkeys.length) {
-        await this.storageSet({ [PASSKEY_STORAGE_KEY]: filtered });
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.lockedError();
+      }
 
+      const deleted = await secureStorage.deletePasskey(credentialId);
+
+      if (deleted) {
         this.logSync('PASSKEY_DELETED', { credentialId });
         await this.incrementPendingChanges();
         this.triggerSync();
@@ -1365,8 +1372,9 @@ class BackgroundService {
     try {
       const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
       const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
-      const passkeysResult = await this.storageGet(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = passkeysResult?.[PASSKEY_STORAGE_KEY] || [];
+      const passkeys: any[] = secureStorage.isStorageUnlocked()
+        ? await secureStorage.getPasskeys()
+        : [];
 
       const statusResult = await chrome.storage.local.get(SYNC_STATUS_KEY);
       const persistedStatus = statusResult?.[SYNC_STATUS_KEY] || {};
@@ -1470,8 +1478,12 @@ class BackgroundService {
     });
 
     try {
-      const passkeysResult = await this.storageGet(PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = passkeysResult?.[PASSKEY_STORAGE_KEY] || [];
+      if (!secureStorage.isStorageUnlocked()) {
+        this.logSync('TRIGGER_SYNC_SKIPPED', { reason: 'secure storage locked' });
+        return;
+      }
+
+      const passkeys: any[] = await secureStorage.getPasskeys();
 
       const syncStatus = syncService.getStatus();
       if (!syncStatus.connected) {
