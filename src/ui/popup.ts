@@ -1,49 +1,15 @@
 /**
  * Popup UI for PassKey Vault
  *
- * Displays and manages stored passkeys with full export/import support
+ * Displays and manages stored passkeys with full export/import support.
+ * All passkey data is read/written via the background service worker using
+ * the secure encrypted storage (AES-256-GCM, master password required).
  */
 
 (function () {
   'use strict';
 
-  const POPUP_PASSKEY_STORAGE_KEY = 'passkeys';
   const EXPORT_VERSION = '1.0';
-
-  /**
-   * Reliable wrapper around chrome.storage.local.get using the callback-based
-   * API.  In Firefox MV2 non-persistent extension pages the Promise-based
-   * variant of chrome.storage.local.get() can resolve with `undefined` instead
-   * of the expected result object, causing storage reads to silently fail.
-   * The callback form works correctly in both Chrome and Firefox.
-   */
-  function storageGet(key: string): Promise<Record<string, any>> {
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.get(key, (result) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(result ?? {});
-        }
-      });
-    });
-  }
-
-  /**
-   * Reliable wrapper around chrome.storage.local.set using the callback-based
-   * API for the same reasons as storageGet above.
-   */
-  function storageSet(data: Record<string, any>): Promise<void> {
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.set(data, () => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve();
-        }
-      });
-    });
-  }
 
   // DOM elements
   let loadingEl: HTMLElement;
@@ -59,6 +25,8 @@
   let searchInput: HTMLInputElement;
   let searchClearBtn: HTMLButtonElement;
   let debugLoggingToggle: HTMLInputElement;
+  let setupPanelEl: HTMLElement;
+  let unlockPanelEl: HTMLElement;
 
   let allPasskeys: any[] = [];
 
@@ -84,7 +52,115 @@
     searchInput = document.getElementById('search-input') as HTMLInputElement;
     searchClearBtn = document.getElementById('search-clear') as HTMLButtonElement;
     debugLoggingToggle = document.getElementById('debug-logging-toggle') as HTMLInputElement;
+    setupPanelEl = document.getElementById('setup-panel') as HTMLElement;
+    unlockPanelEl = document.getElementById('unlock-panel') as HTMLElement;
   }
+
+  // ─── Master password panels ──────────────────────────────────────────────
+
+  function showSetupPanel(): void {
+    loadingEl.style.display = 'none';
+    emptyStateEl.style.display = 'none';
+    passkeyListEl.style.display = 'none';
+    unlockPanelEl.style.display = 'none';
+    setupPanelEl.style.display = 'flex';
+    passkeyCountEl.textContent = '';
+  }
+
+  function showUnlockPanel(): void {
+    loadingEl.style.display = 'none';
+    emptyStateEl.style.display = 'none';
+    passkeyListEl.style.display = 'none';
+    setupPanelEl.style.display = 'none';
+    unlockPanelEl.style.display = 'flex';
+    passkeyCountEl.textContent = '';
+  }
+
+  function hideSecurityPanels(): void {
+    setupPanelEl.style.display = 'none';
+    unlockPanelEl.style.display = 'none';
+  }
+
+  function setupSecurityPanelListeners(): void {
+    // Setup panel
+    const setupForm = document.getElementById('setup-form') as HTMLFormElement;
+    if (setupForm) {
+      setupForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const newPw = (document.getElementById('setup-password') as HTMLInputElement).value;
+        const confirmPw = (document.getElementById('setup-password-confirm') as HTMLInputElement).value;
+        const errEl = document.getElementById('setup-error') as HTMLElement;
+
+        if (newPw.length < 8) {
+          errEl.textContent = 'Password must be at least 8 characters.';
+          return;
+        }
+        if (newPw !== confirmPw) {
+          errEl.textContent = 'Passwords do not match.';
+          return;
+        }
+        errEl.textContent = '';
+
+        const submitBtn = setupForm.querySelector('button[type="submit"]') as HTMLButtonElement;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Setting up…';
+
+        try {
+          const response = await chrome.runtime.sendMessage({
+            type: 'SETUP_MASTER_PASSWORD',
+            payload: { password: newPw },
+          });
+          if (response?.success) {
+            showNotification('Master password set up successfully!');
+            hideSecurityPanels();
+            loadPasskeys();
+          } else {
+            errEl.textContent = response?.error || 'Setup failed. Please try again.';
+          }
+        } catch (err) {
+          errEl.textContent = 'Communication error. Please try again.';
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Set Up Vault';
+        }
+      });
+    }
+
+    // Unlock panel
+    const unlockForm = document.getElementById('unlock-form') as HTMLFormElement;
+    if (unlockForm) {
+      unlockForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pw = (document.getElementById('unlock-password') as HTMLInputElement).value;
+        const errEl = document.getElementById('unlock-error') as HTMLElement;
+        errEl.textContent = '';
+
+        const submitBtn = unlockForm.querySelector('button[type="submit"]') as HTMLButtonElement;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Unlocking…';
+
+        try {
+          const response = await chrome.runtime.sendMessage({
+            type: 'UNLOCK_SECURE_STORAGE',
+            payload: { password: pw },
+          });
+          if (response?.success) {
+            hideSecurityPanels();
+            loadPasskeys();
+          } else {
+            errEl.textContent = response?.error || 'Incorrect password. Please try again.';
+          }
+        } catch (err) {
+          errEl.textContent = 'Communication error. Please try again.';
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Unlock';
+        }
+      });
+    }
+  }
+
+  // ─── Confirm modal ───────────────────────────────────────────────────────
 
   function createConfirmModal(): void {
     confirmModal = document.createElement('div');
@@ -104,7 +180,6 @@
     confirmModal.style.display = 'none';
     document.body.appendChild(confirmModal);
 
-    // Close on overlay click
     confirmModal.addEventListener('click', (e) => {
       if (e.target === confirmModal) {
         hideConfirmModal();
@@ -139,15 +214,8 @@
         hideConfirmModal();
       };
 
-      const onConfirm = () => {
-        cleanup();
-        resolve(true);
-      };
-
-      const onCancel = () => {
-        cleanup();
-        resolve(false);
-      };
+      const onConfirm = () => { cleanup(); resolve(true); };
+      const onCancel = () => { cleanup(); resolve(false); };
 
       confirmBtn.addEventListener('click', onConfirm);
       cancelBtn.addEventListener('click', onCancel);
@@ -158,15 +226,17 @@
     confirmModal.style.display = 'none';
   }
 
+  // ─── Event listeners ─────────────────────────────────────────────────────
+
   function setupEventListeners(): void {
     refreshBtn.addEventListener('click', loadPasskeys);
     exportFullBtn.addEventListener('click', exportPasskeysFull);
     importBtn.addEventListener('click', openImportPage);
     clearBtn.addEventListener('click', clearAllPasskeys);
 
-    const syncSettingsBtn = document.getElementById('sync-settings-btn') as HTMLButtonElement;
-    if (syncSettingsBtn) {
-      syncSettingsBtn.addEventListener('click', openSyncSettings);
+    const syncSettingsBtnEl = document.getElementById('sync-settings-btn') as HTMLButtonElement;
+    if (syncSettingsBtnEl) {
+      syncSettingsBtnEl.addEventListener('click', openSyncSettings);
     }
 
     searchInput.addEventListener('input', handleSearch);
@@ -178,6 +248,8 @@
     }
 
     debugLoggingToggle.addEventListener('change', handleDebugLoggingToggle);
+
+    setupSecurityPanelListeners();
   }
 
   async function loadDebugLoggingState(): Promise<void> {
@@ -202,12 +274,12 @@
         showNotification(`Debug logging ${enabled ? 'enabled' : 'disabled'}`);
       } else {
         showNotification('Failed to toggle debug logging', 'error');
-        debugLoggingToggle.checked = !enabled; // Revert
+        debugLoggingToggle.checked = !enabled;
       }
     } catch (error) {
       console.error('Failed to toggle debug logging:', error);
       showNotification('Failed to toggle debug logging', 'error');
-      debugLoggingToggle.checked = !enabled; // Revert
+      debugLoggingToggle.checked = !enabled;
     }
   }
 
@@ -215,9 +287,10 @@
     chrome.tabs.create({ url: chrome.runtime.getURL('sync-settings.html') });
   }
 
+  // ─── Search ──────────────────────────────────────────────────────────────
+
   function handleSearch(): void {
     const query = searchInput.value.trim().toLowerCase();
-
     searchClearBtn.style.display = query ? 'block' : 'none';
 
     if (!query) {
@@ -226,7 +299,6 @@
     }
 
     const filtered = filterAndSortPasskeys(allPasskeys, query);
-
     if (filtered.length === 0) {
       showNoResults(query);
     } else {
@@ -248,30 +320,18 @@
       .map((passkey) => {
         const domain = (passkey.rpId || '').toLowerCase();
         const username = (passkey.user?.name || '').toLowerCase();
-
         const domainMatch = domain.includes(query);
         const usernameMatch = username.includes(query);
 
-        if (!domainMatch && !usernameMatch) {
-          return null;
-        }
+        if (!domainMatch && !usernameMatch) return null;
 
         let score = 0;
-
         if (hasAtSymbol) {
-          if (usernameMatch) {
-            score += username.startsWith(query) ? 100 : 50;
-          }
-          if (domainMatch) {
-            score += domain.startsWith(query) ? 40 : 20;
-          }
+          if (usernameMatch) score += username.startsWith(query) ? 100 : 50;
+          if (domainMatch) score += domain.startsWith(query) ? 40 : 20;
         } else {
-          if (domainMatch) {
-            score += domain.startsWith(query) ? 100 : 50;
-          }
-          if (usernameMatch) {
-            score += username.startsWith(query) ? 40 : 20;
-          }
+          if (domainMatch) score += domain.startsWith(query) ? 100 : 50;
+          if (usernameMatch) score += username.startsWith(query) ? 40 : 20;
         }
 
         return { passkey, score };
@@ -279,9 +339,7 @@
       .filter((item): item is { passkey: any; score: number } => item !== null);
 
     scored.sort((a, b) => {
-      if (b.score !== a.score) {
-        return b.score - a.score;
-      }
+      if (b.score !== a.score) return b.score - a.score;
       return (b.passkey.createdAt || 0) - (a.passkey.createdAt || 0);
     });
 
@@ -302,21 +360,38 @@
     chrome.tabs.create({ url: chrome.runtime.getURL('import.html') });
   }
 
+  // ─── Passkey loading ─────────────────────────────────────────────────────
+
   async function loadPasskeys(): Promise<void> {
     try {
       loadingEl.style.display = 'flex';
       emptyStateEl.style.display = 'none';
       passkeyListEl.style.display = 'none';
+      hideSecurityPanels();
 
       searchInput.value = '';
       searchClearBtn.style.display = 'none';
 
-      const result = await storageGet(POPUP_PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result[POPUP_PASSKEY_STORAGE_KEY] || [];
-
-      allPasskeys = passkeys;
+      const response = await chrome.runtime.sendMessage({ type: 'LIST_PASSKEYS', payload: {} });
 
       loadingEl.style.display = 'none';
+
+      if (response?.requiresSetup) {
+        showSetupPanel();
+        return;
+      }
+
+      if (response?.requiresUnlock) {
+        showUnlockPanel();
+        return;
+      }
+
+      if (!response?.success) {
+        throw new Error(response?.error || 'Failed to load passkeys');
+      }
+
+      const passkeys: any[] = response.passkeys || [];
+      allPasskeys = passkeys;
 
       passkeyCountEl.textContent = `${passkeys.length} passkey${passkeys.length !== 1 ? 's' : ''}`;
 
@@ -336,6 +411,8 @@
       `;
     }
   }
+
+  // ─── Rendering ───────────────────────────────────────────────────────────
 
   function renderPasskeys(passkeys: any[]): void {
     passkeyListEl.innerHTML = '';
@@ -452,24 +529,23 @@
       true
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
-      const result = await storageGet(POPUP_PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result[POPUP_PASSKEY_STORAGE_KEY] || [];
+      const response = await chrome.runtime.sendMessage({
+        type: 'DELETE_PASSKEY',
+        payload: { credentialId },
+      });
 
-      const filtered = passkeys.filter((p) => p.id !== credentialId);
-
-      if (filtered.length < passkeys.length) {
-        await storageSet({ [POPUP_PASSKEY_STORAGE_KEY]: filtered });
-
+      if (response?.success) {
         showNotification('Passkey deleted successfully');
-
         await loadPasskeys();
+      } else if (response?.requiresSetup) {
+        showSetupPanel();
+      } else if (response?.requiresUnlock) {
+        showUnlockPanel();
       } else {
-        showNotification('Passkey not found', 'error');
+        showNotification(response?.error || 'Failed to delete passkey', 'error');
       }
     } catch (error) {
       console.error('Error deleting passkey:', error);
@@ -478,9 +554,7 @@
   }
 
   async function clearAllPasskeys(): Promise<void> {
-    const result = await storageGet(POPUP_PASSKEY_STORAGE_KEY);
-    const passkeys: any[] = result[POPUP_PASSKEY_STORAGE_KEY] || [];
-    const passkeyCount = passkeys.length;
+    const passkeyCount = allPasskeys.length;
 
     if (passkeyCount === 0) {
       showNotification('No passkeys to clear', 'error');
@@ -494,14 +568,21 @@
       true
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
-      await storageSet({ [POPUP_PASSKEY_STORAGE_KEY]: [] });
-      showNotification('All passkeys cleared');
-      await loadPasskeys();
+      const response = await chrome.runtime.sendMessage({ type: 'CLEAR_PASSKEYS', payload: {} });
+
+      if (response?.success) {
+        showNotification('All passkeys cleared');
+        await loadPasskeys();
+      } else if (response?.requiresSetup) {
+        showSetupPanel();
+      } else if (response?.requiresUnlock) {
+        showUnlockPanel();
+      } else {
+        showNotification(response?.error || 'Failed to clear passkeys', 'error');
+      }
     } catch (error) {
       console.error('Error clearing passkeys:', error);
       showNotification('Failed to clear passkeys', 'error');
@@ -516,13 +597,21 @@
       false
     );
 
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
-      const result = await storageGet(POPUP_PASSKEY_STORAGE_KEY);
-      const passkeys: any[] = result[POPUP_PASSKEY_STORAGE_KEY] || [];
+      const response = await chrome.runtime.sendMessage({ type: 'LIST_PASSKEYS', payload: {} });
+
+      if (response?.requiresSetup) {
+        showSetupPanel();
+        return;
+      }
+      if (response?.requiresUnlock) {
+        showUnlockPanel();
+        return;
+      }
+
+      const passkeys: any[] = response?.passkeys || [];
 
       if (passkeys.length === 0) {
         showNotification('No passkeys to export', 'error');
@@ -558,6 +647,8 @@
     }
   }
 
+  // ─── Utilities ───────────────────────────────────────────────────────────
+
   function downloadJson(data: any, filename: string): void {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -576,9 +667,7 @@
 
   function showNotification(message: string, type: string = 'success'): void {
     const existing = document.querySelector('.popup-notification');
-    if (existing) {
-      existing.remove();
-    }
+    if (existing) existing.remove();
 
     const notification = document.createElement('div');
     notification.className = `popup-notification notification-${type}`;

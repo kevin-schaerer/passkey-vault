@@ -170,6 +170,8 @@ class BackgroundService {
         return this.handleListPasskeys(payload, sender);
       case 'DELETE_PASSKEY':
         return this.handleDeletePasskey(payload, sender);
+      case 'CLEAR_PASSKEYS':
+        return this.handleClearPasskeys(sender);
       case 'BACKUP':
         return this.handleBackup(payload, sender);
       case 'RESTORE':
@@ -1157,6 +1159,23 @@ class BackgroundService {
     }
   }
 
+  private async handleClearPasskeys(sender: chrome.runtime.MessageSender): Promise<any> {
+    try {
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.storageNotReadyError();
+      }
+
+      await secureStorage.storePasskeys([]);
+      this.logSync('PASSKEYS_CLEARED', {});
+      await this.incrementPendingChanges();
+      this.triggerSync();
+
+      return { success: true, message: 'All passkeys cleared' };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
   private async handleBackup(payload: any, sender: chrome.runtime.MessageSender): Promise<any> {
     return { success: true, message: 'Backup placeholder' };
   }
@@ -1389,7 +1408,7 @@ class BackgroundService {
     try {
       const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
       const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
-      const passkeys: any[] = secureStorage.isStorageUnlocked()
+      const passkeys: any[] = (await secureStorage.isSetup()) && secureStorage.isStorageUnlocked()
         ? await secureStorage.getPasskeys()
         : [];
 
@@ -1580,6 +1599,8 @@ class BackgroundService {
       }
       if (passkeys.length > 0) {
         logger.info(`Migrated ${passkeys.length} passkeys to secure storage`);
+        // Remove the plaintext passkeys now that they are encrypted
+        await new Promise<void>((resolve) => chrome.storage.local.remove(PASSKEY_STORAGE_KEY, resolve));
       }
 
       return { success: true, message: 'Master password setup complete' };
