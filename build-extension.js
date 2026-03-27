@@ -222,66 +222,239 @@ async function buildForTarget(browserTarget) {
 
   console.log('🎨 Processing icons...');
 
-  const sourceIcon = 'icon.png';
   const iconSizes = [16, 48, 128];
 
-  if (fs.existsSync(sourceIcon)) {
+  // Prefer icon.svg → icon.png → generated fallback (in that order)
+  const sourceSvg = 'icon.svg';
+  const sourcePng = 'icon.png';
+
+  let iconsGenerated = false;
+
+  // Try rsvg-convert (librsvg) for SVG → PNG
+  if (!iconsGenerated && fs.existsSync(sourceSvg)) {
     try {
       for (const size of iconSizes) {
         const outputPath = path.join(iconsDir, `icon${size}.png`);
-        execSync(`convert "${sourceIcon}" -resize ${size}x${size} "${outputPath}"`, {
+        execSync(`rsvg-convert -w ${size} -h ${size} "${sourceSvg}" -o "${outputPath}"`, {
           stdio: 'pipe',
         });
       }
-      console.log('  ✅ Resized icons from icon.png');
-    } catch (error) {
-      console.warn('  ⚠️  ImageMagick not available, generating placeholder icons');
-      generatePlaceholderIcons(iconsDir, iconSizes);
+      console.log('  ✅ Rendered icons from icon.svg (rsvg-convert)');
+      iconsGenerated = true;
+    } catch {
+      // rsvg-convert not available, try next tool
     }
-  } else {
-    console.warn('  ⚠️  icon.png not found, generating placeholder icons');
+  }
+
+  // Try Inkscape for SVG → PNG
+  if (!iconsGenerated && fs.existsSync(sourceSvg)) {
+    try {
+      for (const size of iconSizes) {
+        const outputPath = path.join(iconsDir, `icon${size}.png`);
+        execSync(
+          `inkscape --export-type=png --export-width=${size} --export-height=${size} --export-filename="${outputPath}" "${sourceSvg}"`,
+          { stdio: 'pipe' }
+        );
+      }
+      console.log('  ✅ Rendered icons from icon.svg (inkscape)');
+      iconsGenerated = true;
+    } catch {
+      // Inkscape not available, try next tool
+    }
+  }
+
+  // Try ImageMagick for PNG → PNG (resize)
+  if (!iconsGenerated && fs.existsSync(sourcePng)) {
+    try {
+      for (const size of iconSizes) {
+        const outputPath = path.join(iconsDir, `icon${size}.png`);
+        execSync(`convert "${sourcePng}" -resize ${size}x${size} "${outputPath}"`, {
+          stdio: 'pipe',
+        });
+      }
+      console.log('  ✅ Resized icons from icon.png (ImageMagick)');
+      iconsGenerated = true;
+    } catch {
+      // ImageMagick not available, fall through to generated icons
+    }
+  }
+
+  if (!iconsGenerated) {
+    console.warn('  ⚠️  No image conversion tool found, generating built-in icons');
     generatePlaceholderIcons(iconsDir, iconSizes);
   }
 
   function generatePlaceholderIcons(dir, sizes) {
     for (const size of sizes) {
-      const png = createMinimalPNG(size, 74, 144, 217);
+      const png = createIconPNG(size);
       fs.writeFileSync(path.join(dir, `icon${size}.png`), png);
     }
+    console.log('  ✅ Generated built-in PassKey Vault icons');
   }
 
-  function createMinimalPNG(size, r, g, b) {
+  /**
+   * Renders the PassKey Vault icon (dark navy background, blue shield, gold key)
+   * as a valid RGBA PNG without any external dependencies.
+   */
+  function createIconPNG(size) {
+    const S = size;
+
+    // ── colour palette ──────────────────────────────────────────────────
+    const BG      = [15,  21,  53,  255]; // #0f1535 dark navy
+    const SHIELD  = [58,  120, 220, 255]; // #3a78dc vivid blue
+    const SHIELD2 = [30,  80,  175, 255]; // #1e50af deeper blue (gradient bottom)
+    const KEY     = [255, 210, 0,   255]; // #ffd200 gold
+    const KEY2    = [220, 170, 0,   255]; // #d8aa00 darker gold (gradient bottom)
+    const TRANSP  = [0,   0,   0,   0  ];
+
+    function clamp(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+    function smooth(a, b, x) {
+      // EPSILON prevents division by zero when a === b
+      const EPSILON = 1e-9;
+      const t = clamp((x - a) / (b - a + EPSILON));
+      return t * t * (3 - 2 * t);
+    }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    // px[y][x] = [R, G, B, A]
+    const px = Array.from({ length: S }, () =>
+      Array.from({ length: S }, () => [...TRANSP])
+    );
+
+    // 1) Rounded-square background ─────────────────────────────────────
+    const CR  = S * 0.22;  // corner radius
+    const CX  = S / 2, CY = S / 2;
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const dx = Math.max(Math.abs(x + 0.5 - CX) - (S / 2 - CR), 0);
+        const dy = Math.max(Math.abs(y + 0.5 - CY) - (S / 2 - CR), 0);
+        const d  = Math.sqrt(dx * dx + dy * dy);
+        const a  = smooth(CR + 0.7, CR - 0.3, d);
+        if (a > 0) px[y][x] = [BG[0], BG[1], BG[2], Math.round(255 * a)];
+      }
+    }
+
+    // 2) Shield (heater shield) ─────────────────────────────────────────
+    const SL = S * 0.12, SR = S * 0.88;
+    const ST = S * 0.09, SB = S * 0.93;
+    const SW = (SR - SL) / 2;
+    const SM = (SL + SR) / 2;
+
+    function shieldAlpha(x, y) {
+      const nx = (x + 0.5 - SM) / SW;
+      const ny = (y + 0.5 - ST) / (SB - ST);
+      if (ny < 0) return 0;
+      const maxNx = ny <= 0.68
+        ? (ny < 0.14 ? 1 - 0.06 * (1 - ny / 0.14) ** 2 : 1)
+        : 1 - (ny - 0.68) / 0.32;
+      return smooth(maxNx + 0.012, maxNx - 0.012, Math.abs(nx));
+    }
+
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        if (px[y][x][3] === 0) continue;
+        const a = shieldAlpha(x, y);
+        if (a > 0) {
+          const gy = clamp((y + 0.5 - ST) / (SB - ST));
+          const sc = [
+            Math.round(lerp(SHIELD[0], SHIELD2[0], gy * 0.35)),
+            Math.round(lerp(SHIELD[1], SHIELD2[1], gy * 0.35)),
+            Math.round(lerp(SHIELD[2], SHIELD2[2], gy * 0.35)),
+          ];
+          const bgA = px[y][x][3];
+          px[y][x] = [
+            Math.round(lerp(px[y][x][0], sc[0], a)),
+            Math.round(lerp(px[y][x][1], sc[1], a)),
+            Math.round(lerp(px[y][x][2], sc[2], a)),
+            bgA,
+          ];
+        }
+      }
+    }
+
+    // 3) Key symbol ─────────────────────────────────────────────────────
+    const KCX  = SM;
+    const KCY  = ST + (SB - ST) * 0.47;
+    const KOR  = SW * 0.30;
+    const KIR  = SW * 0.14;
+    const BLY  = KCY;
+    const BLX0 = KCX + KOR * 0.7;
+    const BLX1 = SM + SW * 0.70;
+    const BLH  = SW * 0.12;
+    const TW   = SW * 0.10;
+    const TH   = SW * 0.19;
+    const T1X  = BLX0 + (BLX1 - BLX0) * 0.28;
+    const T2X  = BLX0 + (BLX1 - BLX0) * 0.57;
+    // Feather radius for antialiasing edges: at least 0.5px, scales with icon size
+    const MIN_FEATHER_RADIUS = 0.5;
+    const FEATHER_SCALE_FACTOR = 0.005;
+    const F = Math.max(MIN_FEATHER_RADIUS, S * FEATHER_SCALE_FACTOR);
+
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        if (px[y][x][3] === 0) continue;
+        const xc = x + 0.5, yc = y + 0.5;
+        const dist = Math.sqrt((xc - KCX) ** 2 + (yc - KCY) ** 2);
+
+        // key bow (annular ring)
+        const rm  = (KOR + KIR) / 2;
+        const rw  = (KOR - KIR) / 2;
+        const aRing = smooth(rw + F, rw - F, Math.abs(dist - rm));
+
+        // horizontal blade
+        const aBlade =
+          smooth(BLX0 - F, BLX0 + F, xc) *
+          smooth(BLX1 + F, BLX1 - F, xc) *
+          smooth(BLH + F, BLH - F, Math.abs(yc - BLY));
+
+        // teeth (downward notches)
+        let aTeeth = 0;
+        for (const tx of [T1X, T2X]) {
+          const ix = smooth(tx - F, tx + F, xc) * smooth(tx + TW + F, tx + TW - F, xc);
+          const iy = smooth(BLY - F, BLY + F, yc) * smooth(BLY + TH + F, BLY + TH - F, yc);
+          aTeeth = Math.max(aTeeth, ix * iy);
+        }
+
+        const aKey = Math.max(aRing, aBlade, aTeeth);
+        if (aKey > 0) {
+          const ky = clamp((yc - ST) / (SB - ST));
+          const kc = [
+            Math.round(lerp(KEY[0], KEY2[0], ky * 0.25)),
+            Math.round(lerp(KEY[1], KEY2[1], ky * 0.25)),
+            Math.round(lerp(KEY[2], KEY2[2], ky * 0.25)),
+          ];
+          px[y][x] = [
+            Math.round(lerp(px[y][x][0], kc[0], aKey)),
+            Math.round(lerp(px[y][x][1], kc[1], aKey)),
+            Math.round(lerp(px[y][x][2], kc[2], aKey)),
+            px[y][x][3],
+          ];
+        }
+      }
+    }
+
+    // ── Encode as PNG (RGBA, 8-bit) ────────────────────────────────────
     const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
     const ihdr = Buffer.alloc(25);
     ihdr.writeUInt32BE(13, 0);
     ihdr.write('IHDR', 4);
-    ihdr.writeUInt32BE(size, 8);
-    ihdr.writeUInt32BE(size, 12);
-    ihdr.writeUInt8(8, 16);
-    ihdr.writeUInt8(2, 17);
-    ihdr.writeUInt8(0, 18);
-    ihdr.writeUInt8(0, 19);
-    ihdr.writeUInt8(0, 20);
+    ihdr.writeUInt32BE(S, 8);
+    ihdr.writeUInt32BE(S, 12);
+    ihdr.writeUInt8(8, 16);   // bit depth
+    ihdr.writeUInt8(6, 17);   // colour type: RGBA
+    ihdr.writeUInt8(0, 18); ihdr.writeUInt8(0, 19); ihdr.writeUInt8(0, 20);
     ihdr.writeUInt32BE(zlib.crc32(ihdr.subarray(4, 21)), 21);
 
-    const rawData = Buffer.alloc(size * (1 + size * 3));
-    for (let y = 0; y < size; y++) {
-      rawData[y * (1 + size * 3)] = 0;
-      for (let x = 0; x < size; x++) {
-        const offset = y * (1 + size * 3) + 1 + x * 3;
-        const cx = size / 2,
-          cy = size / 2;
-        const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-        if (dist < size * 0.4) {
-          rawData[offset] = 255;
-          rawData[offset + 1] = 255;
-          rawData[offset + 2] = 255;
-        } else {
-          rawData[offset] = r;
-          rawData[offset + 1] = g;
-          rawData[offset + 2] = b;
-        }
+    const rawData = Buffer.alloc(S * (1 + S * 4));
+    for (let y = 0; y < S; y++) {
+      rawData[y * (1 + S * 4)] = 0; // filter: None
+      for (let x = 0; x < S; x++) {
+        const off = y * (1 + S * 4) + 1 + x * 4;
+        rawData[off]     = px[y][x][0];
+        rawData[off + 1] = px[y][x][1];
+        rawData[off + 2] = px[y][x][2];
+        rawData[off + 3] = px[y][x][3];
       }
     }
 
@@ -295,9 +468,7 @@ async function buildForTarget(browserTarget) {
       compressed.length + 8
     );
 
-    const iend = Buffer.from([
-      0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-    ]);
+    const iend = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
 
     return Buffer.concat([signature, ihdr, idat, iend]);
   }
