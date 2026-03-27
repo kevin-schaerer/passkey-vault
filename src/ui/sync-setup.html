@@ -68,6 +68,12 @@
           </p>
         </div>
 
+        <div class="form-group">
+          <label for="relay-url-create">Relay Server URL(s) <span style="font-weight:normal;opacity:.7">(optional)</span></label>
+          <input type="text" id="relay-url-create" class="form-input" placeholder="wss://your-server.example.com" />
+          <p class="help-text">Leave blank to use the default public relays. Enter one or more comma-separated Nostr-compatible WebSocket relay URLs to keep data off third-party servers. See README for setup instructions.</p>
+        </div>
+
         <button id="create-chain-btn" class="btn btn-primary btn-full">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14M5 12l7 7 7-7"></path>
@@ -127,6 +133,12 @@
             required
           ></textarea>
           <p class="help-text">Enter the words from the originating device, in the same order.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="relay-url-join">Relay Server URL(s) <span style="font-weight:normal;opacity:.7">(optional)</span></label>
+          <input type="text" id="relay-url-join" class="form-input" placeholder="wss://your-server.example.com" />
+          <p class="help-text">Use the same relay URL(s) as the device that created the chain. Separate multiple URLs with commas.</p>
         </div>
 
         <div class="scan-option">

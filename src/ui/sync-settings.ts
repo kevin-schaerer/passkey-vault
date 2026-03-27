@@ -14,6 +14,7 @@ interface SyncStatusResponse {
   enabled: boolean;
   chainId: string | null;
   deviceId: string | null;
+  relayUrls: string[] | null;
   lastSyncAttempt: number | null;
   lastSyncSuccess: number | null;
   pendingChanges: number;
@@ -427,10 +428,17 @@ function escapeHtml(text: string): string {
 async function loadDebugInfo(): Promise<void> {
   const debugInfoEl = document.getElementById('debug-info');
   const debugLogsEl = document.getElementById('debug-logs');
+  const activeRelaysEl = document.getElementById('active-relays');
 
   try {
-    // Load debug info
-    const infoResult = await chrome.runtime.sendMessage({ type: 'GET_SYNC_DEBUG_INFO' });
+    // Load debug info and status in parallel
+    const [infoResult, statusResult, logsResult] = await Promise.all([
+      chrome.runtime.sendMessage({ type: 'GET_SYNC_DEBUG_INFO' }),
+      chrome.runtime.sendMessage({ type: 'GET_SYNC_STATUS' }),
+      chrome.runtime.sendMessage({ type: 'GET_SYNC_DEBUG_LOGS' }),
+    ]);
+
+    // Populate debug info panel
     if (debugInfoEl) {
       if (infoResult.success) {
         debugInfoEl.innerHTML = `<pre>${formatDebugInfo(infoResult.debugInfo)}</pre>`;
@@ -439,8 +447,18 @@ async function loadDebugInfo(): Promise<void> {
       }
     }
 
-    // Load debug logs
-    const logsResult = await chrome.runtime.sendMessage({ type: 'GET_SYNC_DEBUG_LOGS' });
+    // Show active relay URLs
+    if (activeRelaysEl) {
+      if (statusResult.success && statusResult.status?.relayUrls?.length) {
+        activeRelaysEl.textContent = statusResult.status.relayUrls.join(', ');
+      } else if (infoResult.success && infoResult.debugInfo?.currentRelay) {
+        activeRelaysEl.textContent = infoResult.debugInfo.currentRelay;
+      } else {
+        activeRelaysEl.textContent = 'Default public relays';
+      }
+    }
+
+    // Populate debug logs panel
     if (debugLogsEl) {
       if (logsResult.success) {
         debugLogsEl.innerHTML = formatDebugLogs(logsResult.logs);
