@@ -13,6 +13,7 @@ const PASSKEY_STORAGE_KEY = 'passkeys';
 const SYNC_CONFIG_KEY = 'sync_config';
 const SYNC_DEVICES_KEY = 'sync_devices';
 const SYNC_STATUS_KEY = 'sync_status';
+const SITE_FILTER_KEY = 'site_filter';
 
 // SECURITY: Flag to track if secure storage is initialized
 // In production, this should always require user interaction to unlock
@@ -230,6 +231,10 @@ class BackgroundService {
         return this.handleSetDebugLogging(payload);
       case 'GET_DEBUG_LOGGING':
         return this.handleGetDebugLogging();
+      case 'GET_SITE_FILTER':
+        return this.handleGetSiteFilter();
+      case 'SET_SITE_FILTER':
+        return this.handleSetSiteFilter(payload);
       default:
         throw new Error(`Unknown message type: ${type}`);
     }
@@ -1808,6 +1813,37 @@ class BackgroundService {
     try {
       const enabled = logger.isDebugEnabled();
       return { success: true, enabled };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  private async handleGetSiteFilter(): Promise<any> {
+    try {
+      const result = await this.storageGet(SITE_FILTER_KEY);
+      const stored = result?.[SITE_FILTER_KEY];
+      return {
+        success: true,
+        enabled: stored?.enabled === true,
+        allowedSites: Array.isArray(stored?.allowedSites) ? stored.allowedSites : [],
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  private async handleSetSiteFilter(payload: {
+    enabled: boolean;
+    allowedSites: string[];
+  }): Promise<any> {
+    try {
+      await this.storageSet({
+        [SITE_FILTER_KEY]: {
+          enabled: payload.enabled === true,
+          allowedSites: Array.isArray(payload.allowedSites) ? payload.allowedSites : [],
+        },
+      });
+      return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
     }

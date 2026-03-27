@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "description": "Secure passkey storage and management",
 
-  "permissions": ["storage"],
+  "permissions": ["storage", "tabs"],
 
   "host_permissions": ["https://*/*", "*://*/*"],
 

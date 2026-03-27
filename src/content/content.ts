@@ -108,6 +108,24 @@ class ContentScript {
     const { type, payload, requestId } = message;
 
     if (type === 'PASSKEY_CREATE_REQUEST') {
+      // Check site filter before handling
+      if (!(await this.isSiteAllowed(payload.origin))) {
+        window.postMessage(
+          {
+            source: 'PASSKEY_VAULT_CONTENT',
+            type: 'PASSKEY_CREATE_RESPONSE',
+            requestId,
+            result: {
+              success: false,
+              error: 'No passkeys found for this site',
+              name: 'NotAllowedError',
+            },
+          },
+          '*'
+        );
+        return;
+      }
+
       // Create a new passkey
       try {
         const response = await this.sendMessage({
@@ -166,6 +184,24 @@ class ContentScript {
         );
       }
     } else if (type === 'PASSKEY_GET_REQUEST') {
+      // Check site filter before handling
+      if (!(await this.isSiteAllowed(payload.origin))) {
+        window.postMessage(
+          {
+            source: 'PASSKEY_VAULT_CONTENT',
+            type: 'PASSKEY_GET_RESPONSE',
+            requestId,
+            result: {
+              success: false,
+              error: 'No passkeys found for this site',
+              name: 'NotAllowedError',
+            },
+          },
+          '*'
+        );
+        return;
+      }
+
       // Sign in with existing passkey - show selection UI
       try {
         // First, get list of available passkeys for this site
@@ -434,6 +470,35 @@ class ContentScript {
         modal.remove();
       }
     }, 5000);
+  }
+
+  /**
+   * Check whether the given origin is allowed by the site filter.
+   * If the filter is disabled, all origins are allowed.
+   */
+  private async isSiteAllowed(origin: string): Promise<boolean> {
+    try {
+      const result = await chrome.storage.local.get('site_filter');
+      const filter = result?.site_filter;
+      if (!filter?.enabled) {
+        return true;
+      }
+      const allowedSites: string[] = Array.isArray(filter.allowedSites) ? filter.allowedSites : [];
+      if (allowedSites.length === 0) {
+        return false;
+      }
+      let hostname: string;
+      try {
+        hostname = new URL(origin).hostname;
+      } catch {
+        return false;
+      }
+      return allowedSites.some(
+        (site) => hostname === site || hostname.endsWith('.' + site)
+      );
+    } catch {
+      return true;
+    }
   }
 
   /**
