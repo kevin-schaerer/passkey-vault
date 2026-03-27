@@ -10,7 +10,11 @@ const SYNC_DEVICES_KEY = 'sync_devices';
 const MAX_DEBUG_LOGS = 200;
 const MAX_PROCESSED_EVENTS = 1000; // Track last N event IDs for replay protection
 
-const NOSTR_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.nostr.band'];
+// Default public Nostr relays – used as fallback when no custom relay is configured.
+// To use your own relay, set a custom URL via the Sync Setup UI or the CREATE_SYNC_CHAIN
+// / JOIN_SYNC_CHAIN message (relayUrls field).  See README.md for instructions on running
+// your own Nostr-compatible relay server.
+const DEFAULT_NOSTR_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.nostr.band'];
 
 // Passkey data structure for sync
 export interface SyncPasskey {
@@ -138,6 +142,7 @@ export class SyncService {
   private knownDevices = new Set<string>(); // Track devices we've already seen
   private processedEventIds = new Set<string>(); // SECURITY FIX: Replay protection
   private messageSequence = 0; // SECURITY FIX: Sequence numbers for ordering
+  private relayUrls: string[] = DEFAULT_NOSTR_RELAYS; // Configurable relay list
 
   private log(
     level: DebugLogEntry['level'],
@@ -215,7 +220,7 @@ export class SyncService {
       deviceId: this.deviceId ? this.deviceId.substring(0, 8) + '...' : null,
       deviceName: this.deviceName,
       isConnected: this.isConnected,
-      currentRelay: NOSTR_RELAYS[this.currentRelayIndex],
+      currentRelay: this.relayUrls[this.currentRelayIndex],
       currentRelayIndex: this.currentRelayIndex,
       wsReadyState: this.ws?.readyState,
       hasEncryptionKey: !!this.encryptionKey,
@@ -231,7 +236,8 @@ export class SyncService {
     deviceId: string,
     seedHash: string,
     deviceName?: string,
-    syncSalt?: string // SECURITY FIX: Accept random salt
+    syncSalt?: string, // SECURITY FIX: Accept random salt
+    relayUrls?: string[] // Custom relay URLs (point to your own server)
   ): Promise<void> {
     if (this.chainId === chainId && this.isConnected) {
       this.log('info', 'init', 'Already initialized for this chain');
@@ -244,11 +250,20 @@ export class SyncService {
     this.deviceName = deviceName || 'Unknown Device';
     this.syncSalt = syncSalt || null;
 
+    // Use provided relay URLs, or fall back to the defaults
+    if (relayUrls && relayUrls.length > 0) {
+      this.relayUrls = relayUrls;
+    } else {
+      this.relayUrls = DEFAULT_NOSTR_RELAYS;
+    }
+    this.currentRelayIndex = 0;
+
     this.log('info', 'init', 'Initializing sync service', {
       chainId: chainId.substring(0, 8) + '...',
       deviceId: deviceId.substring(0, 8) + '...',
       deviceName: this.deviceName,
       hasSyncSalt: !!syncSalt,
+      relayUrls: this.relayUrls,
     });
 
     await this.deriveKeys(seedHash);
@@ -331,7 +346,7 @@ export class SyncService {
           })
           .catch((err) => {
             this.log('warn', 'ws', 'Connection failed, trying next relay', { error: err.message });
-            this.currentRelayIndex = (this.currentRelayIndex + 1) % NOSTR_RELAYS.length;
+            this.currentRelayIndex = (this.currentRelayIndex + 1) % this.relayUrls.length;
             setTimeout(tryConnect, RECONNECT_DELAY);
           });
       };
@@ -353,7 +368,7 @@ export class SyncService {
         this.ws = null;
       }
 
-      const relayUrl = NOSTR_RELAYS[this.currentRelayIndex];
+      const relayUrl = this.relayUrls[this.currentRelayIndex];
       this.log('info', 'ws', 'Connecting to relay', {
         relay: relayUrl,
         index: this.currentRelayIndex,
@@ -435,7 +450,7 @@ export class SyncService {
     this.log('info', 'ws', 'Scheduling reconnect in 5s');
     this.reconnectTimer = setTimeout(() => {
       this.log('info', 'ws', 'Attempting reconnect...');
-      this.currentRelayIndex = (this.currentRelayIndex + 1) % NOSTR_RELAYS.length;
+      this.currentRelayIndex = (this.currentRelayIndex + 1) % this.relayUrls.length;
       this.connectWithRetry();
     }, RECONNECT_DELAY);
   }
@@ -1091,11 +1106,12 @@ export class SyncService {
     return bytes;
   }
 
-  getStatus(): { connected: boolean; chainId: string | null; deviceId: string | null } {
+  getStatus(): { connected: boolean; chainId: string | null; deviceId: string | null; relayUrls: string[] } {
     return {
       connected: this.isConnected,
       chainId: this.chainId,
       deviceId: this.deviceId,
+      relayUrls: this.relayUrls,
     };
   }
 

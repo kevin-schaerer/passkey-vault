@@ -35,6 +35,8 @@ interface SyncConfig {
   seedHash: string | null;
   // SECURITY FIX: Random salt for PBKDF2 derivation
   syncSalt: string | null;
+  // Custom WebSocket relay URLs (e.g. your own Nostr relay server)
+  relayUrls?: string[] | null;
 }
 
 interface SyncDevice {
@@ -112,7 +114,8 @@ class BackgroundService {
           config.deviceId,
           config.seedHash,
           config.deviceName || undefined,
-          config.syncSalt || undefined
+          config.syncSalt || undefined,
+          config.relayUrls || undefined
         );
         await this.updateSyncStatus({ connectionStatus: 'connected' });
         logger.info('Sync service started');
@@ -174,9 +177,9 @@ class BackgroundService {
       case 'ACTIVATE_UI':
         return this.handleActivateUI(payload, sender);
       case 'CREATE_SYNC_CHAIN':
-        return this.createSyncChain(message.deviceName, message.wordCount);
+        return this.createSyncChain(message.deviceName, message.wordCount, message.relayUrls);
       case 'JOIN_SYNC_CHAIN':
-        return this.joinSyncChain(message.deviceName, message.mnemonic);
+        return this.joinSyncChain(message.deviceName, message.mnemonic, message.relayUrls);
       case 'LEAVE_SYNC_CHAIN':
         return this.leaveSyncChain();
       case 'GET_SYNC_CHAIN_INFO':
@@ -1142,7 +1145,7 @@ class BackgroundService {
     return { success: true, message: 'Activate UI placeholder' };
   }
 
-  private async createSyncChain(deviceName: string, wordCount: number): Promise<any> {
+  private async createSyncChain(deviceName: string, wordCount: number, relayUrls?: string[]): Promise<any> {
     try {
       const mnemonic = await generateMnemonic(wordCount);
       const seedBytes = mnemonicToBytes(mnemonic);
@@ -1191,12 +1194,13 @@ class BackgroundService {
           deviceName,
           seedHash: seedHashHex,
           syncSalt,
+          relayUrls: relayUrls && relayUrls.length > 0 ? relayUrls : null,
         },
         [SYNC_DEVICES_KEY]: chain,
       });
 
-      // Initialize sync service with the random salt
-      await syncService.initialize(chainId, deviceId, seedHashHex, deviceName, syncSalt);
+      // Initialize sync service with the random salt and optional custom relays
+      await syncService.initialize(chainId, deviceId, seedHashHex, deviceName, syncSalt, relayUrls);
       this.logSync('SYNC_CHAIN_CREATED', { chainId, deviceId });
 
       return { success: true, mnemonic, deviceId, chainId };
@@ -1206,7 +1210,7 @@ class BackgroundService {
     }
   }
 
-  private async joinSyncChain(deviceName: string, mnemonic: string): Promise<any> {
+  private async joinSyncChain(deviceName: string, mnemonic: string, relayUrls?: string[]): Promise<any> {
     try {
       if (!validateMnemonic(mnemonic)) {
         return { success: false, error: 'Invalid recovery phrase' };
@@ -1255,6 +1259,7 @@ class BackgroundService {
         deviceName,
         seedHash: seedHashHex,
         syncSalt,
+        relayUrls: relayUrls && relayUrls.length > 0 ? relayUrls : null,
       };
 
       await chrome.storage.local.set({
@@ -1262,8 +1267,8 @@ class BackgroundService {
         [SYNC_DEVICES_KEY]: chain,
       });
 
-      // Initialize sync service with the random salt
-      await syncService.initialize(chainId, deviceId, seedHashHex, deviceName, syncSalt);
+      // Initialize sync service with the random salt and optional custom relays
+      await syncService.initialize(chainId, deviceId, seedHashHex, deviceName, syncSalt, relayUrls);
       await syncService.requestSync();
       this.logSync('SYNC_CHAIN_JOINED', { chainId, deviceId });
 
@@ -1287,6 +1292,7 @@ class BackgroundService {
           deviceName: null,
           seedHash: null,
           syncSalt: null,
+          relayUrls: null,
         },
         [SYNC_DEVICES_KEY]: null,
       });
@@ -1385,6 +1391,7 @@ class BackgroundService {
           enabled: isEnabled,
           chainId: config?.chainId || null,
           deviceId: config?.deviceId || null,
+          relayUrls: config?.relayUrls || null,
           ...this.syncStatus,
         },
       };

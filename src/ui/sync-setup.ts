@@ -58,6 +58,7 @@ function showPanel(panelId: string): void {
 function setupCreateChain(): void {
   const createBtn = document.getElementById('create-chain-btn') as HTMLButtonElement;
   const deviceNameInput = document.getElementById('device-name-create') as HTMLInputElement;
+  const relayUrlInput = document.getElementById('relay-url-create') as HTMLInputElement;
   const copyMnemonicBtn = document.getElementById('copy-mnemonic-btn') as HTMLButtonElement;
   const finishBtn = document.getElementById('finish-create-btn') as HTMLButtonElement;
 
@@ -72,10 +73,15 @@ function setupCreateChain(): void {
 
     try {
       const wordCount = getSelectedWordCount();
+      const relayUrl = relayUrlInput?.value.trim();
+      const relayUrls = relayUrl
+        ? relayUrl.split(',').map((u) => u.trim()).filter((u) => u.length > 0)
+        : undefined;
       const result = await chrome.runtime.sendMessage({
         type: 'CREATE_SYNC_CHAIN',
         deviceName,
         wordCount,
+        relayUrls,
       });
 
       if (result.success) {
@@ -114,6 +120,7 @@ function setupJoinChain(): void {
   const joinBtn = document.getElementById('join-chain-btn') as HTMLButtonElement;
   const mnemonicInput = document.getElementById('mnemonic-input') as HTMLTextAreaElement;
   const deviceNameInput = document.getElementById('device-name-join') as HTMLInputElement;
+  const relayUrlInput = document.getElementById('relay-url-join') as HTMLInputElement;
   const scanQrBtn = document.getElementById('scan-qr-btn') as HTMLButtonElement;
 
   if (!joinBtn || !mnemonicInput || !deviceNameInput) return;
@@ -140,10 +147,15 @@ function setupJoinChain(): void {
     try {
       showLoading(JOIN_LOADING);
 
+      const relayUrl = relayUrlInput?.value.trim();
+      const relayUrls = relayUrl
+        ? relayUrl.split(',').map((u) => u.trim()).filter((u) => u.length > 0)
+        : undefined;
       const result = await chrome.runtime.sendMessage({
         type: 'JOIN_SYNC_CHAIN',
         deviceName,
         mnemonic,
+        relayUrls,
       });
 
       hideLoading(JOIN_LOADING);
