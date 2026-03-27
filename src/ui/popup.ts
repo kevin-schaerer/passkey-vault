@@ -177,7 +177,7 @@
   }
 
   function openSyncSettings(): void {
-    window.open(chrome.runtime.getURL('sync-settings.html'));
+    chrome.tabs.create({ url: chrome.runtime.getURL('sync-settings.html') });
   }
 
   function handleSearch(): void {
@@ -264,7 +264,7 @@
   }
 
   function openImportPage(): void {
-    window.open(chrome.runtime.getURL('import.html'));
+    chrome.tabs.create({ url: chrome.runtime.getURL('import.html') });
   }
 
   async function loadPasskeys(): Promise<void> {
