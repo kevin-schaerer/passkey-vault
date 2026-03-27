@@ -362,6 +362,22 @@
 
   // ─── Passkey loading ─────────────────────────────────────────────────────
 
+  /**
+   * Directly checks chrome.storage.local (no background message) to determine
+   * whether the master password has ever been set up.  Used as a fallback when
+   * the background returns undefined (Firefox MV2 non-persistent event-page
+   * timing issue: the background process may be mid-start when the first popup
+   * message arrives, causing sendResponse to be lost and sendMessage to resolve
+   * with undefined instead of the expected response object).
+   */
+  function checkNeedsSetup(): Promise<boolean> {
+    return new Promise((resolve) => {
+      chrome.storage.local.get('passext_master_key_check', (result) => {
+        resolve(!result?.passext_master_key_check);
+      });
+    });
+  }
+
   async function loadPasskeys(): Promise<void> {
     try {
       loadingEl.style.display = 'flex';
@@ -376,18 +392,31 @@
 
       loadingEl.style.display = 'none';
 
-      if (response?.requiresSetup) {
+      if (!response) {
+        // Firefox MV2: the background event page may not have sent a response
+        // (race between page wake-up and sendResponse).  Read storage directly
+        // to determine whether setup is required or the vault is just locked.
+        const needsSetup = await checkNeedsSetup();
+        if (needsSetup) {
+          showSetupPanel();
+        } else {
+          showUnlockPanel();
+        }
+        return;
+      }
+
+      if (response.requiresSetup) {
         showSetupPanel();
         return;
       }
 
-      if (response?.requiresUnlock) {
+      if (response.requiresUnlock) {
         showUnlockPanel();
         return;
       }
 
-      if (!response?.success) {
-        throw new Error(response?.error || 'Failed to load passkeys');
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to load passkeys');
       }
 
       const passkeys: any[] = response.passkeys || [];
@@ -402,6 +431,10 @@
       }
     } catch (error) {
       console.error('Error loading passkeys:', error);
+      // Restore loadingEl visibility before replacing its content so the error
+      // is actually visible (if the error is thrown after loadingEl was already
+      // hidden, the catch block would silently show nothing — blank window).
+      loadingEl.style.display = 'flex';
       loadingEl.innerHTML = `
         <div class="error-state">
           <div class="error-icon">⚠️</div>
@@ -540,7 +573,7 @@
       if (response?.success) {
         showNotification('Passkey deleted successfully');
         await loadPasskeys();
-      } else if (response?.requiresSetup) {
+      } else if (!response || response?.requiresSetup) {
         showSetupPanel();
       } else if (response?.requiresUnlock) {
         showUnlockPanel();
@@ -576,7 +609,7 @@
       if (response?.success) {
         showNotification('All passkeys cleared');
         await loadPasskeys();
-      } else if (response?.requiresSetup) {
+      } else if (!response || response?.requiresSetup) {
         showSetupPanel();
       } else if (response?.requiresUnlock) {
         showUnlockPanel();
@@ -602,7 +635,7 @@
     try {
       const response = await chrome.runtime.sendMessage({ type: 'LIST_PASSKEYS', payload: {} });
 
-      if (response?.requiresSetup) {
+      if (!response || response?.requiresSetup) {
         showSetupPanel();
         return;
       }
