@@ -93,6 +93,60 @@
         <div id="passkey-list" class="passkey-list" style="display: none">
           <!-- Passkeys will be injected here -->
         </div>
+
+        <div id="setup-panel" class="security-panel" style="display: none">
+          <div class="security-panel-icon">🔐</div>
+          <h2 class="security-panel-title">Set Up Your Vault</h2>
+          <p class="security-panel-desc">Create a master password to keep your passkeys encrypted and secure.</p>
+          <form id="setup-form" class="security-panel-form" autocomplete="off">
+            <div class="form-group">
+              <label for="setup-password">Master Password</label>
+              <input
+                type="password"
+                id="setup-password"
+                class="form-input"
+                placeholder="At least 8 characters"
+                autocomplete="new-password"
+                required
+                minlength="8"
+              />
+            </div>
+            <div class="form-group">
+              <label for="setup-password-confirm">Confirm Password</label>
+              <input
+                type="password"
+                id="setup-password-confirm"
+                class="form-input"
+                placeholder="Repeat your password"
+                autocomplete="new-password"
+                required
+              />
+            </div>
+            <p id="setup-error" class="security-panel-error"></p>
+            <button type="submit" class="btn btn-primary" style="width:100%">Set Up Vault</button>
+          </form>
+        </div>
+
+        <div id="unlock-panel" class="security-panel" style="display: none">
+          <div class="security-panel-icon">🔑</div>
+          <h2 class="security-panel-title">Unlock Your Vault</h2>
+          <p class="security-panel-desc">Enter your master password to access your passkeys.</p>
+          <form id="unlock-form" class="security-panel-form" autocomplete="off">
+            <div class="form-group">
+              <label for="unlock-password">Master Password</label>
+              <input
+                type="password"
+                id="unlock-password"
+                class="form-input"
+                placeholder="Enter your master password"
+                autocomplete="current-password"
+                required
+              />
+            </div>
+            <p id="unlock-error" class="security-panel-error"></p>
+            <button type="submit" class="btn btn-primary" style="width:100%">Unlock</button>
+          </form>
+        </div>
       </main>
 
       <footer>

@@ -80,6 +80,48 @@ function decryptData(encryptedData: EncryptedData, key: Uint8Array): string {
   return new TextDecoder().decode(decrypted);
 }
 
+/**
+ * Reliable wrapper around chrome.storage.local.get using the callback-based
+ * API. In Firefox MV2 non-persistent background pages the Promise-based
+ * variant can resolve with `undefined` instead of the expected result object.
+ * The callback form works correctly in both Chrome and Firefox.
+ */
+function storageGet(key: string | string[]): Promise<Record<string, any>> {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(key, (result) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(result ?? {});
+      }
+    });
+  });
+}
+
+function storageSet(data: Record<string, any>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set(data, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+function storageRemove(keys: string | string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.remove(keys, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
 function uint8ArrayToBase64(arr: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < arr.length; i++) {
@@ -122,13 +164,13 @@ export class SecureStorage {
   async initialize(masterPassword: string): Promise<boolean> {
     try {
       // Load or create salt
-      const saltResult = await chrome.storage.local.get(STORAGE_KEYS.ENCRYPTION_SALT);
+      const saltResult = await storageGet(STORAGE_KEYS.ENCRYPTION_SALT);
       if (saltResult[STORAGE_KEYS.ENCRYPTION_SALT]) {
         this.salt = base64ToUint8Array(saltResult[STORAGE_KEYS.ENCRYPTION_SALT]);
       } else {
         // First time setup - generate new salt
         this.salt = randomBytes(ENCRYPTION_CONFIG.saltLength);
-        await chrome.storage.local.set({
+        await storageSet({
           [STORAGE_KEYS.ENCRYPTION_SALT]: uint8ArrayToBase64(this.salt),
         });
       }
@@ -137,7 +179,7 @@ export class SecureStorage {
       this.encryptionKey = await deriveKeyFromPassword(masterPassword, this.salt);
 
       // Verify password is correct (if we have existing data)
-      const checkResult = await chrome.storage.local.get(STORAGE_KEYS.MASTER_KEY_CHECK);
+      const checkResult = await storageGet(STORAGE_KEYS.MASTER_KEY_CHECK);
       if (checkResult[STORAGE_KEYS.MASTER_KEY_CHECK]) {
         try {
           const decrypted = decryptData(
@@ -155,7 +197,7 @@ export class SecureStorage {
       } else {
         // First time - store check value
         const checkData = encryptData('passkey-vault-check', this.encryptionKey);
-        await chrome.storage.local.set({
+        await storageSet({
           [STORAGE_KEYS.MASTER_KEY_CHECK]: checkData,
         });
       }
@@ -181,7 +223,7 @@ export class SecureStorage {
    * Check if a master password has been set up
    */
   async isSetup(): Promise<boolean> {
-    const result = await chrome.storage.local.get(STORAGE_KEYS.MASTER_KEY_CHECK);
+    const result = await storageGet(STORAGE_KEYS.MASTER_KEY_CHECK);
     return !!result[STORAGE_KEYS.MASTER_KEY_CHECK];
   }
 
@@ -229,7 +271,7 @@ export class SecureStorage {
     this.ensureUnlocked();
 
     const encrypted = encryptData(JSON.stringify(config), this.encryptionKey!);
-    await chrome.storage.local.set({
+    await storageSet({
       [STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG]: encrypted,
     });
 
@@ -242,7 +284,7 @@ export class SecureStorage {
   async getSyncConfig(): Promise<SecureStorageConfig | null> {
     this.ensureUnlocked();
 
-    const result = await chrome.storage.local.get(STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG);
+    const result = await storageGet(STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG);
     if (!result[STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG]) {
       return null;
     }
@@ -264,7 +306,7 @@ export class SecureStorage {
    * Delete sync configuration
    */
   async deleteSyncConfig(): Promise<void> {
-    await chrome.storage.local.remove(STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG);
+    await storageRemove(STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG);
   }
 
   /**
@@ -274,7 +316,7 @@ export class SecureStorage {
     this.ensureUnlocked();
 
     const encrypted = encryptData(JSON.stringify(passkeys), this.encryptionKey!);
-    await chrome.storage.local.set({
+    await storageSet({
       [STORAGE_KEYS.ENCRYPTED_PASSKEYS]: encrypted,
     });
 
@@ -287,7 +329,7 @@ export class SecureStorage {
   async getPasskeys(): Promise<any[]> {
     this.ensureUnlocked();
 
-    const result = await chrome.storage.local.get(STORAGE_KEYS.ENCRYPTED_PASSKEYS);
+    const result = await storageGet(STORAGE_KEYS.ENCRYPTED_PASSKEYS);
     if (!result[STORAGE_KEYS.ENCRYPTED_PASSKEYS]) {
       return [];
     }
@@ -362,7 +404,7 @@ export class SecureStorage {
       const newKey = await deriveKeyFromPassword(newPassword, newSalt);
 
       // Re-encrypt everything with new key
-      await chrome.storage.local.set({
+      await storageSet({
         [STORAGE_KEYS.ENCRYPTION_SALT]: uint8ArrayToBase64(newSalt),
       });
 
@@ -375,7 +417,7 @@ export class SecureStorage {
 
       // Store new check value
       const checkData = encryptData('passkey-vault-check', this.encryptionKey);
-      await chrome.storage.local.set({
+      await storageSet({
         [STORAGE_KEYS.MASTER_KEY_CHECK]: checkData,
       });
 
@@ -400,7 +442,7 @@ export class SecureStorage {
    */
   async emergencyWipe(): Promise<void> {
     this.lock();
-    await chrome.storage.local.remove([
+    await storageRemove([
       STORAGE_KEYS.MASTER_KEY_CHECK,
       STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG,
       STORAGE_KEYS.ENCRYPTED_PASSKEYS,
