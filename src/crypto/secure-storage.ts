@@ -21,6 +21,8 @@ const STORAGE_KEYS = {
   ENCRYPTED_SYNC_CONFIG: 'passext_encrypted_sync_config',
   ENCRYPTED_PASSKEYS: 'passext_encrypted_passkeys',
   ENCRYPTION_SALT: 'passext_encryption_salt',
+  PIN_ENCRYPTED_KEY: 'passext_pin_encrypted_key',
+  PIN_SALT: 'passext_pin_salt',
 } as const;
 
 export interface SecureStorageConfig {
@@ -154,8 +156,6 @@ export class SecureStorage {
   private encryptionKey: Uint8Array | null = null;
   private salt: Uint8Array | null = null;
   private isUnlocked = false;
-  private lockTimeout: ReturnType<typeof setTimeout> | null = null;
-  private autoLockMs = 30 * 60 * 1000; // 30 minutes default
 
   /**
    * Initialize secure storage with a master password
@@ -203,7 +203,6 @@ export class SecureStorage {
       }
 
       this.isUnlocked = true;
-      this.resetAutoLock();
       return true;
     } catch (error) {
       console.error('SecureStorage initialization failed:', error);
@@ -236,32 +235,13 @@ export class SecureStorage {
       this.encryptionKey = null;
     }
     this.isUnlocked = false;
-    if (this.lockTimeout) {
-      clearTimeout(this.lockTimeout);
-      this.lockTimeout = null;
-    }
   }
 
   /**
-   * Reset the auto-lock timer
+   * Set auto-lock timeout in milliseconds (no-op – kept for API compatibility)
    */
-  private resetAutoLock(): void {
-    if (this.lockTimeout) {
-      clearTimeout(this.lockTimeout);
-    }
-    this.lockTimeout = setTimeout(() => {
-      this.lock();
-    }, this.autoLockMs);
-  }
-
-  /**
-   * Set auto-lock timeout in milliseconds
-   */
-  setAutoLockTimeout(ms: number): void {
-    this.autoLockMs = ms;
-    if (this.isUnlocked) {
-      this.resetAutoLock();
-    }
+  setAutoLockTimeout(_ms: number): void {
+    // Auto-lock is disabled; vault only locks manually or on browser/session close
   }
 
   /**
@@ -274,8 +254,6 @@ export class SecureStorage {
     await storageSet({
       [STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG]: encrypted,
     });
-
-    this.resetAutoLock();
   }
 
   /**
@@ -294,7 +272,6 @@ export class SecureStorage {
         result[STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG],
         this.encryptionKey!
       );
-      this.resetAutoLock();
       return JSON.parse(decrypted);
     } catch (error) {
       console.error('Failed to decrypt sync config:', error);
@@ -319,8 +296,6 @@ export class SecureStorage {
     await storageSet({
       [STORAGE_KEYS.ENCRYPTED_PASSKEYS]: encrypted,
     });
-
-    this.resetAutoLock();
   }
 
   /**
@@ -336,7 +311,6 @@ export class SecureStorage {
 
     try {
       const decrypted = decryptData(result[STORAGE_KEYS.ENCRYPTED_PASSKEYS], this.encryptionKey!);
-      this.resetAutoLock();
       return JSON.parse(decrypted);
     } catch (error) {
       console.error('Failed to decrypt passkeys:', error);
@@ -429,10 +403,102 @@ export class SecureStorage {
         await this.storePasskeys(passkeys);
       }
 
-      this.resetAutoLock();
       return true;
     } catch (error) {
       console.error('Failed to change master password:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if a PIN has been configured
+   */
+  async hasPin(): Promise<boolean> {
+    const result = await storageGet(STORAGE_KEYS.PIN_ENCRYPTED_KEY);
+    return !!result[STORAGE_KEYS.PIN_ENCRYPTED_KEY];
+  }
+
+  /**
+   * Set a PIN. The vault must already be unlocked.
+   * Encrypts the current master key under the PIN so it can be used to unlock later.
+   */
+  async setPin(pin: string): Promise<void> {
+    this.ensureUnlocked();
+
+    const pinSalt = randomBytes(ENCRYPTION_CONFIG.saltLength);
+    const pinKey = await deriveKeyFromPassword(pin, pinSalt);
+    const encryptedKey = encryptData(uint8ArrayToBase64(this.encryptionKey!), pinKey);
+    secureWipe(pinKey);
+
+    await storageSet({
+      [STORAGE_KEYS.PIN_SALT]: uint8ArrayToBase64(pinSalt),
+      [STORAGE_KEYS.PIN_ENCRYPTED_KEY]: encryptedKey,
+    });
+  }
+
+  /**
+   * Clear the PIN (vault must be unlocked)
+   */
+  async clearPin(): Promise<void> {
+    this.ensureUnlocked();
+    await storageRemove([STORAGE_KEYS.PIN_ENCRYPTED_KEY, STORAGE_KEYS.PIN_SALT]);
+  }
+
+  /**
+   * Unlock the vault using a PIN.
+   * Returns true if successful.
+   */
+  async unlockWithPin(pin: string): Promise<boolean> {
+    try {
+      const [pinKeyResult, encResult] = await Promise.all([
+        storageGet(STORAGE_KEYS.PIN_SALT),
+        storageGet(STORAGE_KEYS.PIN_ENCRYPTED_KEY),
+      ]);
+
+      const pinSaltB64 = pinKeyResult[STORAGE_KEYS.PIN_SALT];
+      const pinEncData = encResult[STORAGE_KEYS.PIN_ENCRYPTED_KEY];
+      if (!pinSaltB64 || !pinEncData) {
+        return false; // No PIN configured
+      }
+
+      const pinSalt = base64ToUint8Array(pinSaltB64);
+      const pinKey = await deriveKeyFromPassword(pin, pinSalt);
+
+      let masterKeyB64: string;
+      try {
+        masterKeyB64 = decryptData(pinEncData, pinKey);
+      } catch {
+        secureWipe(pinKey);
+        return false; // Wrong PIN
+      }
+      secureWipe(pinKey);
+
+      const masterKey = base64ToUint8Array(masterKeyB64);
+
+      // Verify the master key is correct
+      const checkResult = await storageGet(STORAGE_KEYS.MASTER_KEY_CHECK);
+      if (checkResult[STORAGE_KEYS.MASTER_KEY_CHECK]) {
+        try {
+          const decrypted = decryptData(checkResult[STORAGE_KEYS.MASTER_KEY_CHECK], masterKey);
+          if (decrypted !== 'passkey-vault-check') {
+            secureWipe(masterKey);
+            return false;
+          }
+        } catch {
+          secureWipe(masterKey);
+          return false;
+        }
+      }
+
+      if (this.encryptionKey) {
+        secureWipe(this.encryptionKey);
+      }
+      this.encryptionKey = masterKey;
+      this.isUnlocked = true;
+      return true;
+    } catch (error) {
+      console.error('SecureStorage PIN unlock failed:', error);
+      this.lock();
       return false;
     }
   }
@@ -447,6 +513,8 @@ export class SecureStorage {
       STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG,
       STORAGE_KEYS.ENCRYPTED_PASSKEYS,
       STORAGE_KEYS.ENCRYPTION_SALT,
+      STORAGE_KEYS.PIN_ENCRYPTED_KEY,
+      STORAGE_KEYS.PIN_SALT,
     ]);
   }
 

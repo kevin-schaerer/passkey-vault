@@ -209,6 +209,16 @@ class BackgroundService {
         return this.handleIsSecureStorageUnlocked();
       case 'CHANGE_MASTER_PASSWORD':
         return this.handleChangeMasterPassword(payload);
+      case 'SET_PIN':
+        return this.handleSetPin(payload);
+      case 'CLEAR_PIN':
+        return this.handleClearPin();
+      case 'UNLOCK_WITH_PIN':
+        return this.handleUnlockWithPin(payload);
+      case 'HAS_PIN':
+        return this.handleHasPin();
+      case 'IMPORT_PASSKEYS':
+        return this.handleImportPasskeys(payload);
       case 'SET_DEBUG_LOGGING':
         return this.handleSetDebugLogging(payload);
       case 'GET_DEBUG_LOGGING':
@@ -247,7 +257,8 @@ class BackgroundService {
   }
 
   private handleSuspend(): void {
-    logger.info('Extension suspending');
+    logger.info('Extension suspending – locking secure storage');
+    secureStorage.lock();
   }
 
   /**
@@ -1670,6 +1681,88 @@ class BackgroundService {
       return { success: true, message: 'Master password changed successfully' };
     } catch (error: any) {
       console.error('Failed to change master password:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  private async handleSetPin(payload: { pin: string }): Promise<any> {
+    try {
+      const { pin } = payload;
+      if (!pin || pin.length < 4) {
+        return { success: false, error: 'PIN must be at least 4 digits' };
+      }
+      if (!/^\d+$/.test(pin)) {
+        return { success: false, error: 'PIN must contain only digits' };
+      }
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.lockedError();
+      }
+      await secureStorage.setPin(pin);
+      return { success: true, message: 'PIN set successfully' };
+    } catch (error: any) {
+      console.error('Failed to set PIN:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  private async handleClearPin(): Promise<any> {
+    try {
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.lockedError();
+      }
+      await secureStorage.clearPin();
+      return { success: true, message: 'PIN cleared' };
+    } catch (error: any) {
+      console.error('Failed to clear PIN:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  private async handleUnlockWithPin(payload: { pin: string }): Promise<any> {
+    try {
+      const { pin } = payload;
+      if (!pin) {
+        return { success: false, error: 'PIN is required' };
+      }
+      const unlocked = await secureStorage.unlockWithPin(pin);
+      if (!unlocked) {
+        return { success: false, error: 'Incorrect PIN or no PIN configured' };
+      }
+      return { success: true, message: 'Secure storage unlocked with PIN' };
+    } catch (error: any) {
+      console.error('Failed to unlock with PIN:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  private async handleHasPin(): Promise<any> {
+    try {
+      const hasPin = await secureStorage.hasPin();
+      return { success: true, hasPin };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  private async handleImportPasskeys(payload: { passkeys: any[] }): Promise<any> {
+    try {
+      if (!secureStorage.isStorageUnlocked()) {
+        return this.storageNotReadyError();
+      }
+      const { passkeys } = payload;
+      if (!Array.isArray(passkeys) || passkeys.length === 0) {
+        return { success: false, error: 'No passkeys provided' };
+      }
+      let imported = 0;
+      for (const passkey of passkeys) {
+        if (passkey.id || passkey.credentialId) {
+          await secureStorage.upsertPasskey(passkey);
+          imported++;
+        }
+      }
+      return { success: true, imported, message: `Imported ${imported} passkey(s)` };
+    } catch (error: any) {
+      console.error('Failed to import passkeys:', error);
       return { success: false, error: error.message };
     }
   }

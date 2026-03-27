@@ -1426,3 +1426,105 @@ html:has(.sync-settings) {
   min-height: 16px;
   margin: -8px 0 10px;
 }
+
+/* ── Settings Modal ──────────────────────────────────────────────────────── */
+.settings-modal-content {
+  max-width: 320px;
+  text-align: left;
+  padding: 0;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.modal-header .modal-title {
+  margin: 0;
+  font-size: 14px;
+}
+
+.settings-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-section:last-child {
+  border-bottom: none;
+}
+
+.settings-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-section-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+.pin-status-row {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.pin-btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.pin-btn-row .btn {
+  flex: 1;
+  font-size: 12px;
+  padding: 7px 12px;
+}
+
+/* ── Unlock tabs ─────────────────────────────────────────────────────────── */
+.unlock-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  padding: 3px;
+}
+
+.unlock-tab {
+  flex: 1;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.unlock-tab.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.unlock-tab:not(.active):hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* ── PIN input ───────────────────────────────────────────────────────────── */
+.pin-input {
+  letter-spacing: 0.15em;
+  text-align: center;
+}

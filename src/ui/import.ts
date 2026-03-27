@@ -1,13 +1,12 @@
 /**
  * Import Page for PassKey Vault
  *
- * Handles importing passkeys from backup files
+ * Handles importing passkeys from backup files via the background service
+ * so they are correctly encrypted in secure storage.
  */
 
 (function () {
   'use strict';
-
-  const IMPORT_PASSKEY_STORAGE_KEY = 'passkeys';
 
   // State
   let parsedData: any = null;
@@ -120,10 +119,27 @@
         return;
       }
 
+      // Check vault status via background
+      const statusResponse = await chrome.runtime.sendMessage({ type: 'IS_SECURE_STORAGE_UNLOCKED' });
+      if (!statusResponse?.success) {
+        showStatus('Cannot communicate with the extension background. Please try again.', 'error');
+        return;
+      }
+
+      if (!statusResponse.isSetup) {
+        showStatus('Please set up your vault master password before importing.', 'error');
+        return;
+      }
+
+      if (!statusResponse.isUnlocked) {
+        showStatus('Your vault is locked. Please unlock it in the extension popup first, then return here to import.', 'error');
+        return;
+      }
+
       // Get existing passkeys to check for duplicates
-      const result = await chrome.storage.local.get(IMPORT_PASSKEY_STORAGE_KEY);
-      const existingPasskeys: any[] = result[IMPORT_PASSKEY_STORAGE_KEY] || [];
-      existingIds = new Set(existingPasskeys.map((p) => p.id));
+      const listResponse = await chrome.runtime.sendMessage({ type: 'LIST_PASSKEYS', payload: {} });
+      const existingPasskeys: any[] = listResponse?.passkeys || [];
+      existingIds = new Set(existingPasskeys.map((p: any) => p.id || p.credentialId));
 
       // Separate new and duplicate passkeys
       newPasskeys = validPasskeys.filter((p: any) => !existingIds.has(p.id));
@@ -184,20 +200,29 @@
       return;
     }
 
+    importBtn.disabled = true;
+    importBtn.textContent = 'Importing…';
+
     try {
-      // Get existing passkeys
-      const result = await chrome.storage.local.get(IMPORT_PASSKEY_STORAGE_KEY);
-      const existingPasskeys: any[] = result[IMPORT_PASSKEY_STORAGE_KEY] || [];
+      const response = await chrome.runtime.sendMessage({
+        type: 'IMPORT_PASSKEYS',
+        payload: { passkeys: newPasskeys },
+      });
 
-      // Merge
-      const mergedPasskeys = [...existingPasskeys, ...newPasskeys];
-
-      // Save
-      await chrome.storage.local.set({ [IMPORT_PASSKEY_STORAGE_KEY]: mergedPasskeys });
+      if (!response?.success) {
+        if (response?.requiresUnlock) {
+          showStatus('Your vault is locked. Please unlock it in the extension popup first.', 'error');
+        } else if (response?.requiresSetup) {
+          showStatus('Please set up your vault master password before importing.', 'error');
+        } else {
+          showStatus('Failed to import: ' + (response?.error || 'Unknown error'), 'error');
+        }
+        return;
+      }
 
       // Show success
       showStatus(
-        `Successfully imported ${newPasskeys.length} passkey${newPasskeys.length !== 1 ? 's' : ''}!`,
+        `Successfully imported ${response.imported} passkey${response.imported !== 1 ? 's' : ''}!`,
         'success'
       );
 
@@ -209,6 +234,9 @@
     } catch (error) {
       console.error('Error importing passkeys:', error);
       showStatus('Failed to import passkeys: ' + (error as Error).message, 'error');
+    } finally {
+      importBtn.disabled = false;
+      importBtn.textContent = 'Import';
     }
   }
 
@@ -235,3 +263,4 @@
     return div.innerHTML;
   }
 })();
+
