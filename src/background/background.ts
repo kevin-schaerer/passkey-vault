@@ -297,6 +297,23 @@ class BackgroundService {
     };
   }
 
+  private setupRequiredError() {
+    return {
+      success: false,
+      error: 'Please set up a master password to store passkeys securely.',
+      requiresSetup: true,
+    };
+  }
+
+  /**
+   * Returns the appropriate "not ready" error response depending on whether
+   * a master password has been set up (locked) or not yet created (needs setup).
+   */
+  private async storageNotReadyError() {
+    const isSetup = await secureStorage.isSetup();
+    return isSetup ? this.lockedError() : this.setupRequiredError();
+  }
+
   private async handleCreatePasskey(
     payload: any,
     sender: chrome.runtime.MessageSender
@@ -311,7 +328,7 @@ class BackgroundService {
       logger.debug('Creating passkey for', rpId, 'user:', user?.name);
 
       if (!secureStorage.isStorageUnlocked()) {
-        return this.lockedError();
+        return this.storageNotReadyError();
       }
 
       const existingPasskeys: any[] = await secureStorage.getPasskeys();
@@ -438,7 +455,7 @@ class BackgroundService {
       logger.debug('Getting passkey for', rpId, 'selectedId:', selectedPasskeyId);
 
       if (!secureStorage.isStorageUnlocked()) {
-        return this.lockedError();
+        return this.storageNotReadyError();
       }
 
       const passkeys: any[] = await secureStorage.getPasskeys();
@@ -1015,7 +1032,7 @@ class BackgroundService {
       const credentialId = publicKey?.id || publicKey?.rawId;
 
       if (!secureStorage.isStorageUnlocked()) {
-        return this.lockedError();
+        return this.storageNotReadyError();
       }
 
       if (credentialId) {
@@ -1052,7 +1069,7 @@ class BackgroundService {
       if (!rpId) return { success: false, error: 'No rpId provided' };
 
       if (!secureStorage.isStorageUnlocked()) {
-        return this.lockedError();
+        return this.storageNotReadyError();
       }
 
       const matchingPasskeys = await secureStorage.getPasskeysForRp(rpId);
@@ -1071,7 +1088,7 @@ class BackgroundService {
   ): Promise<any> {
     try {
       if (!secureStorage.isStorageUnlocked()) {
-        return this.lockedError();
+        return this.storageNotReadyError();
       }
 
       const passkeys: any[] = await secureStorage.getPasskeys();
@@ -1090,7 +1107,7 @@ class BackgroundService {
       if (!rpId) return { success: false, error: 'No rpId provided' };
 
       if (!secureStorage.isStorageUnlocked()) {
-        return this.lockedError();
+        return this.storageNotReadyError();
       }
 
       const matchingPasskeys = await secureStorage.getPasskeysForRp(rpId);
@@ -1122,7 +1139,7 @@ class BackgroundService {
       const { credentialId } = payload;
 
       if (!secureStorage.isStorageUnlocked()) {
-        return this.lockedError();
+        return this.storageNotReadyError();
       }
 
       const deleted = await secureStorage.deletePasskey(credentialId);

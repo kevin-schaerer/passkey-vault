@@ -316,7 +316,7 @@ export class SecureStorage {
     this.ensureUnlocked();
 
     const encrypted = encryptData(JSON.stringify(passkeys), this.encryptionKey!);
-    await chrome.storage.local.set({
+    await storageSet({
       [STORAGE_KEYS.ENCRYPTED_PASSKEYS]: encrypted,
     });
 
@@ -329,7 +329,7 @@ export class SecureStorage {
   async getPasskeys(): Promise<any[]> {
     this.ensureUnlocked();
 
-    const result = await chrome.storage.local.get(STORAGE_KEYS.ENCRYPTED_PASSKEYS);
+    const result = await storageGet(STORAGE_KEYS.ENCRYPTED_PASSKEYS);
     if (!result[STORAGE_KEYS.ENCRYPTED_PASSKEYS]) {
       return [];
     }
@@ -404,7 +404,7 @@ export class SecureStorage {
       const newKey = await deriveKeyFromPassword(newPassword, newSalt);
 
       // Re-encrypt everything with new key
-      await chrome.storage.local.set({
+      await storageSet({
         [STORAGE_KEYS.ENCRYPTION_SALT]: uint8ArrayToBase64(newSalt),
       });
 
@@ -417,7 +417,7 @@ export class SecureStorage {
 
       // Store new check value
       const checkData = encryptData('passkey-vault-check', this.encryptionKey);
-      await chrome.storage.local.set({
+      await storageSet({
         [STORAGE_KEYS.MASTER_KEY_CHECK]: checkData,
       });
 
@@ -442,7 +442,7 @@ export class SecureStorage {
    */
   async emergencyWipe(): Promise<void> {
     this.lock();
-    await chrome.storage.local.remove([
+    await storageRemove([
       STORAGE_KEYS.MASTER_KEY_CHECK,
       STORAGE_KEYS.ENCRYPTED_SYNC_CONFIG,
       STORAGE_KEYS.ENCRYPTED_PASSKEYS,
