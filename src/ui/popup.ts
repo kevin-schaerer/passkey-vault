@@ -138,6 +138,19 @@
             showNotification('Master password set up successfully!');
             hideSecurityPanels();
             loadPasskeys();
+          } else if (response === undefined) {
+            // Firefox MV2: background event page may have processed the request but
+            // the response was lost while the page was resuming from suspension.
+            // Verify the outcome by reading storage directly (same pattern used in
+            // loadPasskeys for the LIST_PASSKEYS response-lost scenario).
+            const stillNeedsSetup = await checkNeedsSetup();
+            if (!stillNeedsSetup) {
+              showNotification('Master password set up successfully!');
+              hideSecurityPanels();
+              loadPasskeys();
+            } else {
+              errEl.textContent = 'Setup failed. Please try again.';
+            }
           } else {
             errEl.textContent = response?.error || 'Setup failed. Please try again.';
           }
@@ -189,6 +202,11 @@
           }
           if (response?.success) {
             hideSecurityPanels();
+            loadPasskeys();
+          } else if (response === undefined) {
+            // Firefox MV2: response was lost; re-check vault state by loading
+            // passkeys — this will show the main view if unlock succeeded, or
+            // re-show the unlock panel if the vault is still locked.
             loadPasskeys();
           } else {
             errEl.textContent =

@@ -3,8 +3,6 @@
  * Provides encrypted storage for sensitive data like seed hashes and passkeys
  */
 
-import { pbkdf2 } from '@noble/hashes/pbkdf2';
-import { sha256 } from '@noble/hashes/sha256';
 import { gcm } from '@noble/ciphers/aes';
 import { randomBytes } from '@noble/hashes/utils';
 
@@ -43,14 +41,31 @@ export interface EncryptedData {
 }
 
 /**
- * Derives an encryption key from a master password
+ * Derives an encryption key from a master password using the WebCrypto API.
+ * Using crypto.subtle.deriveBits instead of the @noble/hashes synchronous
+ * pbkdf2 avoids blocking the event loop for several seconds (100,000 iterations
+ * on a background thread), which in Firefox MV2 caused the message-response
+ * port to become invalid before sendResponse could be called.
  */
 async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<Uint8Array> {
-  const key = pbkdf2(sha256, new TextEncoder().encode(password), salt, {
-    c: ENCRYPTION_CONFIG.iterations,
-    dkLen: ENCRYPTION_CONFIG.keyLength,
-  });
-  return new Uint8Array(key);
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: ENCRYPTION_CONFIG.iterations,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    ENCRYPTION_CONFIG.keyLength * 8
+  );
+  return new Uint8Array(bits);
 }
 
 /**
