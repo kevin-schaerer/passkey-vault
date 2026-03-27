@@ -76,12 +76,20 @@ class BackgroundService {
 
   private async initialize(): Promise<void> {
     try {
-      // Initialize logger first
+      // Set up message and lifecycle handlers FIRST (synchronously) before any
+      // async operations.  In Firefox MV2 non-persistent background pages (and
+      // Chrome MV3 service workers) a message from a content script can arrive
+      // while the background is still initialising.  If onMessage.addListener
+      // has not been called yet the message is silently dropped and the content
+      // script never gets a response – causing passkey creation/retrieval to
+      // appear to "give no response".
+      this.setupMessageHandlers();
+      this.setupLifecycleHandlers();
+
+      // Now do the async initialisation (logger reads from storage).
       await logger.init();
 
       logger.info('Background service initializing...');
-      this.setupMessageHandlers();
-      this.setupLifecycleHandlers();
       await this.initializeAgents();
       await this.initializeSyncService();
       this.isInitialized = true;
