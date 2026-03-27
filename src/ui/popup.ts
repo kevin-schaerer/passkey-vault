@@ -10,6 +10,41 @@
   const POPUP_PASSKEY_STORAGE_KEY = 'passkeys';
   const EXPORT_VERSION = '1.0';
 
+  /**
+   * Reliable wrapper around chrome.storage.local.get using the callback-based
+   * API.  In Firefox MV2 non-persistent extension pages the Promise-based
+   * variant of chrome.storage.local.get() can resolve with `undefined` instead
+   * of the expected result object, causing storage reads to silently fail.
+   * The callback form works correctly in both Chrome and Firefox.
+   */
+  function storageGet(key: string): Promise<Record<string, any>> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.get(key, (result) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(result ?? {});
+        }
+      });
+    });
+  }
+
+  /**
+   * Reliable wrapper around chrome.storage.local.set using the callback-based
+   * API for the same reasons as storageGet above.
+   */
+  function storageSet(data: Record<string, any>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set(data, () => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
   // DOM elements
   let loadingEl: HTMLElement;
   let emptyStateEl: HTMLElement;
@@ -276,7 +311,7 @@
       searchInput.value = '';
       searchClearBtn.style.display = 'none';
 
-      const result = await chrome.storage.local.get(POPUP_PASSKEY_STORAGE_KEY);
+      const result = await storageGet(POPUP_PASSKEY_STORAGE_KEY);
       const passkeys: any[] = result[POPUP_PASSKEY_STORAGE_KEY] || [];
 
       allPasskeys = passkeys;
@@ -422,13 +457,13 @@
     }
 
     try {
-      const result = await chrome.storage.local.get(POPUP_PASSKEY_STORAGE_KEY);
+      const result = await storageGet(POPUP_PASSKEY_STORAGE_KEY);
       const passkeys: any[] = result[POPUP_PASSKEY_STORAGE_KEY] || [];
 
       const filtered = passkeys.filter((p) => p.id !== credentialId);
 
       if (filtered.length < passkeys.length) {
-        await chrome.storage.local.set({ [POPUP_PASSKEY_STORAGE_KEY]: filtered });
+        await storageSet({ [POPUP_PASSKEY_STORAGE_KEY]: filtered });
 
         showNotification('Passkey deleted successfully');
 
@@ -443,7 +478,7 @@
   }
 
   async function clearAllPasskeys(): Promise<void> {
-    const result = await chrome.storage.local.get(POPUP_PASSKEY_STORAGE_KEY);
+    const result = await storageGet(POPUP_PASSKEY_STORAGE_KEY);
     const passkeys: any[] = result[POPUP_PASSKEY_STORAGE_KEY] || [];
     const passkeyCount = passkeys.length;
 
@@ -464,7 +499,7 @@
     }
 
     try {
-      await chrome.storage.local.set({ [POPUP_PASSKEY_STORAGE_KEY]: [] });
+      await storageSet({ [POPUP_PASSKEY_STORAGE_KEY]: [] });
       showNotification('All passkeys cleared');
       await loadPasskeys();
     } catch (error) {
@@ -486,7 +521,7 @@
     }
 
     try {
-      const result = await chrome.storage.local.get(POPUP_PASSKEY_STORAGE_KEY);
+      const result = await storageGet(POPUP_PASSKEY_STORAGE_KEY);
       const passkeys: any[] = result[POPUP_PASSKEY_STORAGE_KEY] || [];
 
       if (passkeys.length === 0) {

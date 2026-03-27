@@ -245,6 +245,42 @@ class BackgroundService {
     logger.info('Extension suspending');
   }
 
+  /**
+   * Reliable wrapper around chrome.storage.local.get using the callback-based
+   * API.  In Firefox MV2 non-persistent background pages the Promise-based
+   * variant of chrome.storage.local.get() can resolve with `undefined` instead
+   * of the expected result object, making all storage reads silently return
+   * empty arrays.  The callback form has always worked correctly in both
+   * Chrome and Firefox, so we use that exclusively here.
+   */
+  private storageGet(key: string | string[]): Promise<Record<string, any>> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.get(key, (result) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(result ?? {});
+        }
+      });
+    });
+  }
+
+  /**
+   * Reliable wrapper around chrome.storage.local.set using the callback-based
+   * API for the same reasons as storageGet above.
+   */
+  private storageSet(data: Record<string, any>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set(data, () => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
   private async initializeAgents(): Promise<void> {
     logger.debug('Initializing agents...');
     logger.debug('Agents initialized (placeholder)');
@@ -263,7 +299,7 @@ class BackgroundService {
 
       logger.debug('Creating passkey for', rpId, 'user:', user?.name);
 
-      const existingResult = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const existingResult = await this.storageGet(PASSKEY_STORAGE_KEY);
       const existingPasskeys: any[] = existingResult?.[PASSKEY_STORAGE_KEY] || [];
       const existingPasskey = existingPasskeys.find((p) => p.rpId === rpId);
 
@@ -328,7 +364,7 @@ class BackgroundService {
 
       const attestationObject = this.createAttestationObjectNone(authenticatorData);
 
-      const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
       const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
 
       passkeys.push({
@@ -353,7 +389,7 @@ class BackgroundService {
         prfKey: prfKeyBase64,
       });
 
-      await chrome.storage.local.set({ [PASSKEY_STORAGE_KEY]: passkeys });
+      await this.storageSet({ [PASSKEY_STORAGE_KEY]: passkeys });
       logger.debug('Created and stored passkey', credentialIdBase64);
 
       this.logSync('PASSKEY_CREATED', { id: credentialIdBase64, rpId });
@@ -392,7 +428,7 @@ class BackgroundService {
 
       logger.debug('Getting passkey for', rpId, 'selectedId:', selectedPasskeyId);
 
-      const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
       const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const matchingPasskeys = passkeys.filter((p) => p.rpId === rpId);
 
@@ -487,7 +523,7 @@ class BackgroundService {
       const index = passkeys.findIndex((p) => p.id === passkey.id);
       if (index >= 0) {
         passkeys[index] = passkey;
-        await chrome.storage.local.set({ [PASSKEY_STORAGE_KEY]: passkeys });
+        await this.storageSet({ [PASSKEY_STORAGE_KEY]: passkeys });
       }
 
       logger.debug('Signed assertion for', passkey.id);
@@ -967,7 +1003,7 @@ class BackgroundService {
   ): Promise<any> {
     try {
       const { publicKey, origin, options } = payload;
-      const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
       const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const rpId = options?.publicKey?.rpId || new URL(origin).hostname;
       const credentialId = publicKey?.id || publicKey?.rawId;
@@ -991,7 +1027,7 @@ class BackgroundService {
           passkeys.push(passkeyData);
         }
 
-        await chrome.storage.local.set({ [PASSKEY_STORAGE_KEY]: passkeys });
+        await this.storageSet({ [PASSKEY_STORAGE_KEY]: passkeys });
         logger.debug('Stored passkey', credentialId, 'for', rpId);
         return { success: true, message: 'Passkey stored successfully', count: passkeys.length };
       }
@@ -1011,7 +1047,7 @@ class BackgroundService {
       const rpId = publicKey?.rpId || (origin ? new URL(origin).hostname : null);
       if (!rpId) return { success: false, error: 'No rpId provided' };
 
-      const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
       const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const matchingPasskeys = passkeys.filter((p) => p.rpId === rpId);
 
@@ -1028,7 +1064,7 @@ class BackgroundService {
     sender: chrome.runtime.MessageSender
   ): Promise<any> {
     try {
-      const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
       const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       return { success: true, passkeys, count: passkeys.length };
     } catch (error: any) {
@@ -1044,7 +1080,7 @@ class BackgroundService {
       const { rpId } = payload;
       if (!rpId) return { success: false, error: 'No rpId provided' };
 
-      const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
       const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const matchingPasskeys = passkeys.filter((p) => p.rpId === rpId);
 
@@ -1073,14 +1109,14 @@ class BackgroundService {
   ): Promise<any> {
     try {
       const { credentialId } = payload;
-      const result = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const result = await this.storageGet(PASSKEY_STORAGE_KEY);
       const passkeys: any[] = result?.[PASSKEY_STORAGE_KEY] || [];
       const filtered = passkeys.filter(
         (p) => p.credentialId !== credentialId && p.id !== credentialId
       );
 
       if (filtered.length < passkeys.length) {
-        await chrome.storage.local.set({ [PASSKEY_STORAGE_KEY]: filtered });
+        await this.storageSet({ [PASSKEY_STORAGE_KEY]: filtered });
 
         this.logSync('PASSKEY_DELETED', { credentialId });
         await this.incrementPendingChanges();
@@ -1323,7 +1359,7 @@ class BackgroundService {
     try {
       const configResult = await chrome.storage.local.get(SYNC_CONFIG_KEY);
       const config: SyncConfig = configResult?.[SYNC_CONFIG_KEY];
-      const passkeysResult = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const passkeysResult = await this.storageGet(PASSKEY_STORAGE_KEY);
       const passkeys: any[] = passkeysResult?.[PASSKEY_STORAGE_KEY] || [];
 
       const statusResult = await chrome.storage.local.get(SYNC_STATUS_KEY);
@@ -1427,7 +1463,7 @@ class BackgroundService {
     });
 
     try {
-      const passkeysResult = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const passkeysResult = await this.storageGet(PASSKEY_STORAGE_KEY);
       const passkeys: any[] = passkeysResult?.[PASSKEY_STORAGE_KEY] || [];
 
       const syncStatus = syncService.getStatus();
@@ -1501,7 +1537,7 @@ class BackgroundService {
       }
 
       // Migrate existing passkeys to secure storage
-      const passkeysResult = await chrome.storage.local.get(PASSKEY_STORAGE_KEY);
+      const passkeysResult = await this.storageGet(PASSKEY_STORAGE_KEY);
       const passkeys: any[] = passkeysResult?.[PASSKEY_STORAGE_KEY] || [];
       for (const passkey of passkeys) {
         await secureStorage.upsertPasskey(passkey);
