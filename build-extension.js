@@ -309,7 +309,9 @@ async function buildForTarget(browserTarget) {
 
     function clamp(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
     function smooth(a, b, x) {
-      const t = clamp((x - a) / (b - a + 1e-9));
+      // EPSILON prevents division by zero when a === b
+      const EPSILON = 1e-9;
+      const t = clamp((x - a) / (b - a + EPSILON));
       return t * t * (3 - 2 * t);
     }
     function lerp(a, b, t) { return a + (b - a) * t; }
@@ -383,7 +385,10 @@ async function buildForTarget(browserTarget) {
     const TH   = SW * 0.19;
     const T1X  = BLX0 + (BLX1 - BLX0) * 0.28;
     const T2X  = BLX0 + (BLX1 - BLX0) * 0.57;
-    const F    = Math.max(0.5, S * 0.005); // feather radius
+    // Feather radius for antialiasing edges: at least 0.5px, scales with icon size
+    const MIN_FEATHER_RADIUS = 0.5;
+    const FEATHER_SCALE_FACTOR = 0.005;
+    const F = Math.max(MIN_FEATHER_RADIUS, S * FEATHER_SCALE_FACTOR);
 
     for (let y = 0; y < S; y++) {
       for (let x = 0; x < S; x++) {
