@@ -7,6 +7,7 @@
   "permissions": [
     "storage",
     "activeTab",
+    "tabs",
     "https://*/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
@@ -27,6 +28,8 @@
   ],
 
   "web_accessible_resources": ["webauthn-inject.js"],
+
+  "content_security_policy": "script-src 'self'; object-src 'self'",
 
   "browser_action": {
     "default_title": "PassKey Vault",
